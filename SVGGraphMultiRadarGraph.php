@@ -27,16 +27,14 @@ require_once 'SVGGraphMultiGraph.php';
  */
 class MultiRadarGraph extends RadarGraph {
 
-  protected $multi_graph;
-
   protected function Draw()
   {
     $body = $this->Grid();
 
     $plots = '';
     $y_axis = $this->y_axes[$this->main_y_axis];
-    $ccount = count($this->colours);
     $chunk_count = count($this->multi_graph);
+    $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
     for($i = 0; $i < $chunk_count; ++$i) {
       $bnum = 0;
       $cmd = 'M';
@@ -47,7 +45,7 @@ class MultiRadarGraph extends RadarGraph {
       $stroke_width = $this->ArrayOption($this->line_stroke_width, $i);
       $fill_style = null;
       if($fill) {
-        $attr['fill'] = $this->GetColour(null, $i % $ccount);
+        $attr['fill'] = $this->GetColour(null, 0, $i);
         $fill_style = array('fill' => $attr['fill']);
         $opacity = $this->ArrayOption($this->fill_opacity, $i);
         if($opacity < 1.0) {
@@ -81,7 +79,7 @@ class MultiRadarGraph extends RadarGraph {
       if($path != '') {
         $path .= "z";
         $attr['d'] = $path;
-        $attr['stroke'] = $this->GetColour(null, $i % $ccount, true);
+        $attr['stroke'] = $this->GetColour(null, 0, $i, true);
         $plots .= $this->Element('path', $attr);
         unset($attr['d']);
         $this->line_styles[] = $attr;
@@ -108,48 +106,5 @@ class MultiRadarGraph extends RadarGraph {
       $this->multi_graph = new MultiGraph($this->values, $this->force_assoc,
         $this->require_integer_keys);
   }
-
-  /**
-   * The horizontal count is reduced by one
-   */
-  protected function GetHorizontalCount()
-  {
-    return $this->multi_graph->ItemsCount(-1);
-  }
-
-  /**
-   * Returns the maximum value
-   */
-  protected function GetMaxValue()
-  {
-    return $this->multi_graph->GetMaxValue();
-  }
-
-  /**
-   * Returns the minimum value
-   */
-  protected function GetMinValue()
-  {
-    return $this->multi_graph->GetMinValue();
-  }
-
-  /**
-   * Returns the key from the MultiGraph
-   */
-  protected function GetKey($index)
-  {
-    return $this->multi_graph->GetKey($index);
-  }
-
-  protected function GetMaxKey()
-  {
-    return $this->multi_graph->GetMaxKey();
-  }
-
-  protected function GetMinKey()
-  {
-    return $this->multi_graph->GetMinKey();
-  }
-
 }
 

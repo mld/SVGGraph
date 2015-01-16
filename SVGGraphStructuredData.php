@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2013 Graham Breach
+ * Copyright (C) 2013-2014 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -313,10 +313,10 @@ class SVGGraphStructuredData implements Countable, ArrayAccess, Iterator {
   {
     if(is_null($this->axis_text_field) && !$this->AssociativeKeys())
       return $index;
+    $index = (int)round($index);
     if($this->AssociativeKeys()) {
       $item = $this->iterators[$dataset]->GetItemByIndex($index);
     } else {
-      $index = $this->StripLabel($index);
       $item = $this->iterators[$dataset]->GetItemByKey($index);
     }
     if(is_null($item))
@@ -395,16 +395,22 @@ class SVGGraphStructuredData implements Countable, ArrayAccess, Iterator {
   }
 
   /**
-   * Returns the min and max sum values
+   * Returns the min and max sum values for some datasets
    */
-  public function GetMinMaxSumValues()
+  public function GetMinMaxSumValues($start = 0, $end = NULL)
   {
+    if($start >= $this->datasets || (!is_null($end) && $end >= $this->datasets))
+      throw new Exception('Dataset not found');
+
+    if(is_null($end))
+      $end = $this->datasets - 1;
     $min_stack = array();
     $max_stack = array();
 
     foreach($this->data as $item) {
       $smin = $smax = 0;
-      foreach($this->dataset_fields as $vfield) {
+      for($dataset = $start; $dataset <= $end; ++$dataset) {
+        $vfield = $this->dataset_fields[$dataset];
         if(!isset($item[$vfield]))
           continue;
         $value = $item[$vfield];
