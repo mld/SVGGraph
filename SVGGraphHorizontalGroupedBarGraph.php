@@ -21,10 +21,10 @@
 
 require_once 'SVGGraphMultiGraph.php';
 require_once 'SVGGraphHorizontalBarGraph.php';
+require_once 'SVGGraphGroupedBarGraph.php';
 
 class HorizontalGroupedBarGraph extends HorizontalBarGraph {
 
-  protected $multi_graph;
   protected $legend_reverse = true;
   protected $single_axis = true;
 
@@ -33,20 +33,15 @@ class HorizontalGroupedBarGraph extends HorizontalBarGraph {
     $body = $this->Grid() . $this->Guidelines(SVGG_GUIDELINE_BELOW);
 
     $chunk_count = count($this->multi_graph);
-    $gap_count = $chunk_count - 1;
-    $bar_height = $this->BarHeight();
-    $chunk_gap = $gap_count > 0 ? $this->group_space : 0;
-    if($gap_count > 0 && $chunk_gap * $gap_count > $bar_height - $chunk_count)
-      $chunk_gap = ($bar_height - $chunk_count) / $gap_count;
-    $chunk_height = ($bar_height - ($chunk_gap * ($chunk_count - 1)))
-      / $chunk_count;
-    $chunk_unit_height = $chunk_height + $chunk_gap;
+    list($chunk_height, $bspace, $chunk_unit_height) =
+      GroupedBarGraph::BarPosition($this->bar_width, 
+      $this->y_axes[$this->main_y_axis]->Unit(), $chunk_count, $this->bar_space,
+      $this->group_space);
     $bar_style = array();
     $bar = array('height' => $chunk_height);
+    $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
 
     $bnum = 0;
-    $bspace = $this->bar_space / 2;
-    $ccount = count($this->colours);
     $bars_shown = array_fill(0, $chunk_count, 0);
 
     foreach($this->multi_graph as $itemlist) {
@@ -55,11 +50,11 @@ class HorizontalGroupedBarGraph extends HorizontalBarGraph {
 
       if(!is_null($bar_pos)) {
         for($j = 0; $j < $chunk_count; ++$j) {
-          $bar['y'] = $bar_pos - $bspace - $bar_height +
-            (($chunk_count - 1 - $j) * $chunk_unit_height);
+          $bar['y'] = $bar_pos - $bspace - $chunk_height - 
+            ($j * $chunk_unit_height);
           $item = $itemlist[$j];
           $this->SetStroke($bar_style, $item, $j);
-          $bar_style['fill'] = $this->GetColour($item, $j % $ccount);
+          $bar_style['fill'] = $this->GetColour($item, $bnum, $j);
           $this->Bar($item->value, $bar);
 
           if($bar['width'] > 0) {
@@ -100,54 +95,5 @@ class HorizontalGroupedBarGraph extends HorizontalBarGraph {
       $this->multi_graph = new MultiGraph($this->values, $this->force_assoc,
         $this->require_integer_keys);
   }
-
-  /**
-   * Find the longest data set
-   */
-  protected function GetHorizontalCount()
-  {
-    return $this->multi_graph->ItemsCount(-1);
-  }
-
-  /**
-   * Returns the maximum (stacked) value
-   */
-  protected function GetMaxValue()
-  {
-    return $this->multi_graph->GetMaxValue();
-  }
-
-  /**
-   * Returns the minimum (stacked) value
-   */
-  protected function GetMinValue()
-  {
-    return $this->multi_graph->GetMinValue();
-  }
-
-  /**
-   * Returns the key from the MultiGraph
-   */
-  protected function GetKey($index)
-  {
-    return $this->multi_graph->GetKey($index);
-  }
-
-  /**
-   * Returns the maximum key from the MultiGraph
-   */
-  protected function GetMaxKey()
-  {
-    return $this->multi_graph->GetMaxKey();
-  }
-
-  /**
-   * Returns the minimum key from the MultiGraph
-   */
-  protected function GetMinKey()
-  {
-    return $this->multi_graph->GetMinKey();
-  }
-
 }
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2013 Graham Breach
+ * Copyright (C) 2013-2014 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -158,6 +158,8 @@ class SVGGraphData implements Countable, ArrayAccess, Iterator {
     if(!$this->AssociativeKeys())
       return $index;
 
+    // round index to nearest integer, or PHP will floor() it
+    $index = (int)round($index);
     if($index >= 0) {
       $slice = array_slice($this->data[$dataset], $index, 1, true);
       // use foreach to get key and value
@@ -194,8 +196,11 @@ class SVGGraphData implements Countable, ArrayAccess, Iterator {
   /**
    * Returns the min and max sum values
    */
-  public function GetMinMaxSumValues()
+  public function GetMinMaxSumValues($start = 0, $end = NULL)
   {
+    if($start != 0 || (!is_null($end) && $end != 0))
+      throw new Exception('Dataset not found');
+
     // structured data is used for multi-data, so just
     // return the min and max
     return array($this->GetMinValue(), $this->GetMaxValue());

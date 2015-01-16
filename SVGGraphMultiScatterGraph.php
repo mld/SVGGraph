@@ -27,7 +27,6 @@ require_once 'SVGGraphMultiGraph.php';
  */
 class MultiScatterGraph extends PointGraph {
 
-  protected $multi_graph;
   protected $repeated_keys = 'accept';
   protected $require_integer_keys = false;
 
@@ -39,8 +38,8 @@ class MultiScatterGraph extends PointGraph {
     if($this->marker_size == 0)
       $this->marker_size = 1;
 
-    $ccount = count($this->colours);
     $chunk_count = count($this->multi_graph);
+    $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
     for($i = 0; $i < $chunk_count; ++$i) {
       $bnum = 0;
       $axis = $this->DatasetYAxis($i);
@@ -93,54 +92,5 @@ class MultiScatterGraph extends PointGraph {
     if($this->values->AssociativeKeys())
       $this->force_assoc = true;
   }
-
-  /**
-   * Used when drawing associative data
-   */
-  protected function GetHorizontalCount()
-  {
-    return $this->multi_graph->ItemsCount(-1);
-  }
-
-  /**
-   * Overload GetMaxValue
-   */
-  protected function GetMaxValue()
-  {
-    return $this->multi_graph->GetMaxValue();
-  }
-
-  /**
-   * Overload GetMinValue
-   */
-  protected function GetMinValue()
-  {
-    return $this->multi_graph->GetMinValue();
-  }
-
-  /**
-   * Returns the key from the MultiGraph
-   */
-  protected function GetKey($index)
-  {
-    return $this->multi_graph->GetKey($index);
-  }
-
-  /**
-   * Overload GetMaxKey
-   */
-  protected function GetMaxKey()
-  {
-    return $this->multi_graph->GetMaxKey();
-  }
-
-  /**
-   * Overload GetMinKey
-   */
-  protected function GetMinKey()
-  {
-    return $this->multi_graph->GetMinKey();
-  }
-
 }
 

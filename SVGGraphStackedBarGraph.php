@@ -25,7 +25,6 @@ require_once 'SVGGraphData.php';
 
 class StackedBarGraph extends BarGraph {
 
-  protected $multi_graph;
   protected $legend_reverse = true;
   protected $single_axis = true;
 
@@ -36,13 +35,14 @@ class StackedBarGraph extends BarGraph {
 
     $body = $this->Grid() . $this->Guidelines(SVGG_GUIDELINE_BELOW);
     $bar_style = array();
-    $bar = array('width' => $this->BarWidth());
+    $bar_width = $this->BarWidth();
+    $bspace = max(0, ($this->x_axes[$this->main_x_axis]->Unit() - $bar_width) / 2);
+    $bar = array('width' => $bar_width);
 
-    $bspace = $this->bar_space / 2;
     $bnum = 0;
-    $ccount = count($this->colours);
     $chunk_count = count($this->multi_graph);
     $bars_shown = array_fill(0, $chunk_count, 0);
+    $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
 
     foreach($this->multi_graph as $itemlist) {
       $k = $itemlist[0]->key;
@@ -66,7 +66,7 @@ class StackedBarGraph extends BarGraph {
         for($j = 0; $j < $chunk_count; ++$j) {
           $item = $itemlist[$j];
           $this->SetStroke($bar_style, $item, $j);
-          $bar_style['fill'] = $this->GetColour($item, $j % $ccount);
+          $bar_style['fill'] = $this->GetColour($item, $bnum, $j);
 
           if(!is_null($item->value)) {
             $this->Bar($item->value, $bar, $item->value >= 0 ? $ypos : $yneg);
@@ -193,14 +193,6 @@ class StackedBarGraph extends BarGraph {
   }
 
   /**
-   * Find the longest data set
-   */
-  protected function GetHorizontalCount()
-  {
-    return $this->multi_graph->ItemsCount(-1);
-  }
-
-  /**
    * Returns the maximum (stacked) value
    */
   protected function GetMaxValue()
@@ -215,30 +207,5 @@ class StackedBarGraph extends BarGraph {
   {
     return $this->multi_graph->GetMinSumValue();
   }
-
-  /**
-   * Returns the key from the MultiGraph
-   */
-  protected function GetKey($index)
-  {
-    return $this->multi_graph->GetKey($index);
-  }
-
-  /**
-   * Returns the maximum key from the MultiGraph
-   */
-  protected function GetMaxKey()
-  {
-    return $this->multi_graph->GetMaxKey();
-  }
-
-  /**
-   * Returns the minimum key from the MultiGraph
-   */
-  protected function GetMinKey()
-  {
-    return $this->multi_graph->GetMinKey();
-  }
-
 }
 

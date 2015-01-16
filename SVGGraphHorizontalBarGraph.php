@@ -32,15 +32,15 @@ class HorizontalBarGraph extends GridGraph {
   {
     $body = $this->Grid() . $this->Guidelines(SVGG_GUIDELINE_BELOW);
     $bar_height = $this->BarHeight();
+    $bspace = max(0, ($this->y_axes[$this->main_y_axis]->Unit() - $bar_height) / 2);
+    $this->ColourSetup($this->values->ItemsCount());
 
     $bnum = 0;
-    $bspace = $this->bar_space / 2;
-    $ccount = count($this->colours);
     foreach($this->values[0] as $item) {
       $bar = array('height' => $bar_height);
       $bar_pos = $this->GridPosition($item->key, $bnum);
       if($this->legend_show_empty || $item->value != 0) {
-        $bar_style = array('fill' => $this->GetColour($item, $bnum % $ccount));
+        $bar_style = array('fill' => $this->GetColour($item, $bnum));
         $this->SetStroke($bar_style, $item);
       } else {
         $bar_style = NULL;
@@ -73,8 +73,10 @@ class HorizontalBarGraph extends GridGraph {
    */
   protected function BarHeight()
   {
+    if(is_numeric($this->bar_width) && $this->bar_width >= 1)
+      return $this->bar_width;
     $unit_h = $this->y_axes[$this->main_y_axis]->Unit();
-    return ($this->bar_space >= $unit_h ? '1' : $unit_h - $this->bar_space);
+    return $this->bar_space >= $unit_h ? '1' : $unit_h - $this->bar_space;
   }
 
   /**

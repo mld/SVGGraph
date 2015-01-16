@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2011-2012 Graham Breach
+ * Copyright (C) 2011-2014 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -33,15 +33,16 @@ class Axis {
   protected $zero;
   protected $units_before;
   protected $units_after;
+  protected $decimal_digits;
   protected $uneven = false;
   protected $rounded_up = false;
   protected $direction = 1;
 
   public function __construct($length, $max_val, $min_val, $min_unit, $fit,
-    $units_before, $units_after)
+    $units_before, $units_after, $decimal_digits)
   {
     if($max_val <= $min_val && $min_unit == 0)
-      throw new Exception('Zero length axis');
+      throw new Exception('Zero length axis (min >= max)');
     $this->length = $length;
     $this->max_value = $max_val;
     $this->min_value = $min_val;
@@ -49,6 +50,7 @@ class Axis {
     $this->fit = $fit;
     $this->units_before = $units_before;
     $this->units_after = $units_after;
+    $this->decimal_digits = $decimal_digits;
   }
 
   /**
@@ -277,6 +279,22 @@ class Axis {
   }
 
   /**
+   * Return the before units text
+   */
+  public function BeforeUnits()
+  {
+    return $this->units_before;
+  }
+
+  /**
+   * Return the after units text
+   */
+  public function AfterUnits()
+  {
+    return $this->units_after;
+  }
+
+  /**
    * Returns the grid points as an array of GridPoints
    */
   public function GetGridPoints($min_space, $start)
@@ -288,7 +306,8 @@ class Axis {
     while($pos < $dlength) {
       // convert to string to use as array key
       $value = ($pos - $this->zero) / $this->unit_size;
-      $text = $this->units_before . Graph::NumString($value) . $this->units_after;
+      $text = $this->units_before .
+        Graph::NumString($value, $this->decimal_digits) . $this->units_after;
       $position = $start + ($this->direction * $pos);
       $points[] = new GridPoint($position, $text, $value);
       $pos = ++$c * $spacing;
@@ -297,7 +316,8 @@ class Axis {
     if($this->uneven) {
       $pos = $this->length - $this->zero;
       $value = $pos / $this->unit_size;
-      $text = $this->units_before . Graph::NumString($value) . $this->units_after;
+      $text = $this->units_before .
+        Graph::NumString($value, $this->decimal_digits) . $this->units_after;
       $position = $start + ($this->direction * $this->length);
       $points[] = new GridPoint($position, $text, $value);
     }

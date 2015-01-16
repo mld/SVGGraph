@@ -26,7 +26,6 @@ require_once 'SVGGraphAxisFixedDoubleEnded.php';
 
 class PopulationPyramid extends HorizontalBarGraph {
 
-  protected $multi_graph;
   protected $legend_reverse = false;
 
   protected function Draw()
@@ -41,11 +40,11 @@ class PopulationPyramid extends HorizontalBarGraph {
     $bar = array('height' => $bar_height);
 
     $bnum = 0;
-    $bspace = $this->bar_space / 2;
+    $bspace = max(0, ($this->y_axes[$this->main_y_axis]->Unit() - $bar_height) / 2);
     $b_start = $this->height - $this->pad_bottom - ($this->bar_space / 2);
-    $ccount = count($this->colours);
     $chunk_count = count($this->multi_graph);
     $bars_shown = array_fill(0, $chunk_count, 0);
+    $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
 
     foreach($this->multi_graph as $itemlist) {
       $k = $itemlist[0]->key;
@@ -70,7 +69,7 @@ class PopulationPyramid extends HorizontalBarGraph {
         for($j = 0; $j < $chunk_count; ++$j) {
           $item = $itemlist[$j];
           $value = $j % 2 ? $item->value : -$item->value;
-          $bar_style['fill'] = $this->GetColour($item, $j % $ccount);
+          $bar_style['fill'] = $this->GetColour($item, $bnum, $j);
           $this->SetStroke($bar_style, $item, $j);
           $this->Bar($value, $bar, $value >= 0 ? $xpos : $xneg);
           if($value < 0)
@@ -218,14 +217,6 @@ class PopulationPyramid extends HorizontalBarGraph {
   }
 
   /**
-   * Find the longest data set
-   */
-  protected function GetHorizontalCount()
-  {
-    return $this->multi_graph->ItemsCount(-1);
-  }
-
-  /**
    * Returns the maximum (stacked) value
    */
   protected function GetMaxValue()
@@ -237,7 +228,10 @@ class PopulationPyramid extends HorizontalBarGraph {
     for($i = 0; $i < $sets; ++$i) {
       $dir = $i % 2;
       foreach($this->values[$i] as $item) {
-        @$sums[$dir][$item->key] += $item->value;
+        if(isset($sums[$dir][$item->key]))
+          $sums[$dir][$item->key] += $item->value;
+        else
+          $sums[$dir][$item->key] = $item->value;
       }
     }
     if(!count($sums[0]))
@@ -257,36 +251,15 @@ class PopulationPyramid extends HorizontalBarGraph {
     for($i = 0; $i < $sets; ++$i) {
       $dir = $i % 2;
       foreach($this->values[$i] as $item) {
-        @$sums[$dir][$item->key] += $item->value;
+        if(isset($sums[$dir][$item->key]))
+          $sums[$dir][$item->key] += $item->value;
+        else
+          $sums[$dir][$item->key] = $item->value;
       }
     }
     if(!count($sums[0]))
       return NULL;
     return min(min($sums[0]), min($sums[1]));
-  }
-
-  /**
-   * Returns the key from the MultiGraph
-   */
-  protected function GetKey($index)
-  {
-    return $this->multi_graph->GetKey($index);
-  }
-
-  /**
-   * Returns the maximum key from the MultiGraph
-   */
-  protected function GetMaxKey()
-  {
-    return $this->multi_graph->GetMaxKey();
-  }
-
-  /**
-   * Returns the minimum key from the MultiGraph
-   */
-  protected function GetMinKey()
-  {
-    return $this->multi_graph->GetMinKey();
   }
 
   /**
@@ -315,6 +288,12 @@ class PopulationPyramid extends HorizontalBarGraph {
     $y_units_after = (string)$this->ArrayOption($this->units_x, 0);
     $x_units_before = (string)$this->ArrayOption($this->units_before_y, 0);
     $y_units_before = (string)$this->ArrayOption($this->units_before_x, 0);
+    $x_decimal_digits = $this->GetFirst(
+      $this->ArrayOption($this->decimal_digits_y, 0),
+      $this->decimal_digits);
+    $y_decimal_digits = $this->GetFirst(
+      $this->ArrayOption($this->decimal_digits_x, 0),
+      $this->decimal_digits);
 
     $this->grid_division_h = $this->ArrayOption($this->grid_division_h, 0);
     $this->grid_division_v = $this->ArrayOption($this->grid_division_v, 0);
@@ -331,17 +310,18 @@ class PopulationPyramid extends HorizontalBarGraph {
 
     if(!is_numeric($this->grid_division_h))
       $x_axis = new AxisDoubleEnded($x_len, $max_h, $min_h, $x_min_unit, $x_fit,
-        $x_units_before, $x_units_after);
+        $x_units_before, $x_units_after, $x_decimal_digits);
     else
       $x_axis = new AxisFixedDoubleEnded($x_len, $max_h, $min_h, 
-        $this->grid_division_h, $x_units_before, $x_units_after);
+        $this->grid_division_h, $x_units_before, $x_units_after,
+        $x_decimal_digits);
 
     if(!is_numeric($this->grid_division_v))
       $y_axis = new Axis($y_len, $max_v, $min_v, $y_min_unit, $y_fit,
-        $y_units_before, $y_units_after);
+        $y_units_before, $y_units_after, $y_decimal_digits);
     else
       $y_axis = new AxisFixed($y_len, $max_v, $min_v, $this->grid_division_v,
-        $y_units_before, $y_units_after);
+        $y_units_before, $y_units_after, $y_decimal_digits);
 
     $y_axis->Reverse(); // because axis starts at bottom
     return array(array($x_axis), array($y_axis));

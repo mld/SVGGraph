@@ -35,9 +35,9 @@ class HorizontalFloatingBarGraph extends HorizontalBarGraph {
     $bar_style = array();
     $bar = array('height' => $bar_height);
 
-    $bspace = $this->bar_space / 2;
+    $bspace = max(0, ($this->y_axes[$this->main_y_axis]->Unit() - $bar_height) / 2);
     $bnum = 0;
-    $ccount = count($this->colours);
+    $this->ColourSetup($this->values->ItemsCount());
 
     foreach($this->values[0] as $item) {
       $bar_pos = $this->GridPosition($item->key, $bnum);
@@ -51,7 +51,7 @@ class HorizontalFloatingBarGraph extends HorizontalBarGraph {
         $this->Bar($value, $bar, $start);
 
         if($bar['width'] > 0) {
-          $bar_style['fill'] = $this->GetColour($item, $bnum % $ccount);
+          $bar_style['fill'] = $this->GetColour($item, $bnum);
           $this->SetStroke($bar_style, $item);
 
           if($this->show_tooltips)

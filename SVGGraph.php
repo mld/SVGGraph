@@ -19,7 +19,9 @@
  * For more information, please contact <graham@goat1000.com>
  */
 
-define('SVGGRAPH_VERSION', 'SVGGraph 2.15');
+define('SVGGRAPH_VERSION', 'SVGGraph 2.17');
+
+require_once 'SVGGraphColours.php';
 
 class SVGGraph {
 
@@ -29,6 +31,7 @@ class SVGGraph {
   public $values = array();
   public $links = NULL;
   public $colours = NULL;
+  private $colour_sets = 0;
 
   public function __construct($w, $h, $settings = NULL)
   {
@@ -52,9 +55,76 @@ class SVGGraph {
     else
       $this->links = func_get_args();
   }
+
+  /**
+   * Assign a single colour set for use across datasets
+   */
   public function Colours($colours)
   {
     $this->colours = $colours;
+  }
+
+  /**
+   * Sets colours for a single dataset
+   */
+  public function ColourSet($dataset, $colours)
+  {
+    if(!is_object($this->colours))
+      $this->colours = new SVGGraphColours();
+    $this->colours->Set($dataset, $colours);
+  }
+
+  /**
+   * Sets up RGB colour range
+   */
+  public function ColourRangeRGB($dataset, $r1, $g1, $b1, $r2, $g2, $b2)
+  {
+    if(!is_object($this->colours))
+      $this->colours = new SVGGraphColours();
+    $this->colours->RangeRGB($dataset, $r1, $g1, $b1, $r2, $g2, $b2);
+  }
+
+  /**
+   * RGB colour range from hex codes
+   */
+  public function ColourRangeHexRGB($dataset, $c1, $c2)
+  {
+    if(!is_object($this->colours))
+      $this->colours = new SVGGraphColours();
+    $this->colours->RangeHexRGB($dataset, $c1, $c2);
+  }
+
+  /**
+   * Sets up HSL colour range
+   */
+  public function ColourRangeHSL($dataset, $h1, $s1, $l1, $h2, $s2, $l2,
+    $reverse = false)
+  {
+    if(!is_object($this->colours))
+      $this->colours = new SVGGraphColours();
+    $this->colours->RangeHSL($dataset, $h1, $s1, $l1, $h2, $s2, $l2, $reverse);
+  }
+
+  /**
+   * HSL colour range from hex codes
+   */
+  public function ColourRangeHexHSL($dataset, $c1, $c2, $reverse = false)
+  {
+    if(!is_object($this->colours))
+      $this->colours = new SVGGraphColours();
+    $this->colours->RangeHexHSL($dataset, $c1, $c2, $reverse);
+  }
+
+  /**
+   * Sets up HSL colour range from RGB values
+   */
+  public function ColourRangeRGBtoHSL($dataset, $r1, $g1, $b1, $r2, $g2, $b2,
+    $reverse = false)
+  {
+    if(!is_object($this->colours))
+      $this->colours = new SVGGraphColours();
+    $this->colours->RangeRGBtoHSL($dataset, $r1, $g1, $b1, $r2, $g2, $b2,
+      $reverse);
   }
 
 
@@ -70,8 +140,10 @@ class SVGGraph {
     $g = new $class($this->width, $this->height, $this->settings);
     $g->Values($this->values);
     $g->Links($this->links);
-    if(!is_null($this->colours))
+    if(is_object($this->colours))
       $g->colours = $this->colours;
+    else
+      $g->colours = new SVGGraphColours($this->colours);
     return $g;
   }
 
@@ -116,6 +188,7 @@ abstract class Graph {
   protected $gradient_map = array();
   protected $pattern_list = NULL;
   protected $defs = array();
+  protected $back_matter = '';
 
   protected $namespaces = array();
   protected static $javascript = NULL;
@@ -128,6 +201,7 @@ abstract class Graph {
   protected $repeated_keys = 'error';
   protected $require_structured = false;
   protected $require_integer_keys = true;
+  protected $multi_graph = NULL;
 
   public function __construct($w, $h, $settings = NULL)
   {
@@ -135,9 +209,13 @@ abstract class Graph {
     $this->height = $h;
 
     // get settings from ini file that are relevant to this class
-    $ini_settings = @parse_ini_file('svggraph.ini', TRUE);
-    if($ini_settings === false)
-      die('svggraph.ini file not found -- exiting');
+    $ini_file = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'svggraph.ini';
+    if(!file_exists($ini_file))
+      $ini_settings = FALSE;
+    else
+      $ini_settings = parse_ini_file($ini_file, TRUE);
+    if($ini_settings === FALSE)
+      die("Ini file [{$ini_file}] not found -- exiting");
 
     $class = get_class($this);
     $hierarchy = array($class);
@@ -152,10 +230,6 @@ abstract class Graph {
 
     if(is_array($settings))
       $this->Settings($settings);
-
-    // set default colours
-    $this->colours = array('#11c','#c11','#cc1','#1c1','#c81',
-      '#116','#611','#661','#161','#631');
   }
 
 
@@ -247,22 +321,32 @@ abstract class Graph {
 
   protected function GetMinValue()
   {
+    if(!is_null($this->multi_graph))
+      return $this->multi_graph->GetMinValue();
     return $this->values->GetMinValue();
   }
   protected function GetMaxValue()
   {
+    if(!is_null($this->multi_graph))
+      return $this->multi_graph->GetMaxValue();
     return $this->values->GetMaxValue();
   }
   protected function GetMinKey()
   {
+    if(!is_null($this->multi_graph))
+      return $this->multi_graph->GetMinKey();
     return $this->values->GetMinKey();
   }
   protected function GetMaxKey()
   {
+    if(!is_null($this->multi_graph))
+      return $this->multi_graph->GetMaxKey();
     return $this->values->GetMaxKey();
   }
   protected function GetKey($i)
   {
+    if(!is_null($this->multi_graph))
+      return $this->multi_graph->GetKey($i);
     return $this->values->GetKey($i);
   }
 
@@ -276,6 +360,7 @@ abstract class Graph {
     $contents = $this->Canvas($canvas_id);
     $contents .= $this->DrawTitle();
     $contents .= $this->Draw();
+    $contents .= $this->DrawBackMatter();
     $contents .= $this->DrawLegend();
 
     // rounded rects might need a clip path
@@ -286,6 +371,14 @@ abstract class Graph {
     return $contents;
   }
 
+
+  /**
+   * Adds any markup that goes after the graph
+   */
+  protected function DrawBackMatter()
+  {
+    return $this->back_matter;
+  }
 
   /**
    * Draws the legend
@@ -352,8 +445,14 @@ abstract class Graph {
         $entry = $this->DrawLegendEntry($key, $x, $y, $w, $entry_height);
         if(!empty($entry)) {
           $text['y'] = $y + $text_y_offset;
-          @$text_columns[$column] .= $this->Element('text', $text, NULL, $value);
-          @$entry_columns[$column] .= $entry;
+          if(isset($text_columns[$column]))
+            $text_columns[$column] .= $this->Element('text', $text, NULL, $value);
+          else
+            $text_columns[$column] = $this->Element('text', $text, NULL, $value);
+          if(isset($entry_columns[$column]))
+            $entry_columns[$column] .= $entry;
+          else
+            $entry_columns[$column] = $entry;
           $y += $entry_height + $this->legend_padding;
 
           if(++$column_entry == $per_column) {
@@ -671,11 +770,22 @@ abstract class Graph {
   protected function Canvas($id)
   {
     $bg = $this->BackgroundImage();
+    $colour = $this->ParseColour($this->back_colour);
+    $opacity = 1;
+    if(strpos($colour, ':') !== FALSE)
+      list($colour, $opacity) = explode(':', $colour);
+
     $canvas = array(
       'width' => '100%', 'height' => '100%',
-      'fill' => $this->ParseColour($this->back_colour),
+      'fill' => $colour,
       'stroke-width' => 0
     );
+    if($opacity < 1)
+      if($opacity <= 0)
+        $canvas['fill'] = 'none';
+      else
+        $canvas['opacity'] = $opacity;
+
     if($this->back_round)
       $canvas['rx'] = $canvas['ry'] = $this->back_round;
     if($bg == '' && $this->back_stroke_width) {
@@ -729,8 +839,13 @@ abstract class Graph {
   {
     $lines = explode("\n", $text);
     $content = array_shift($lines);
+    $content = ($content == '' ? ' ' : htmlspecialchars($content,
+      ENT_COMPAT, $this->encoding));
 
     foreach($lines as $line) {
+      // blank tspan elements collapse to nothing, so insert a space
+      $line = ($line == '' ? ' ' : htmlspecialchars($line, ENT_COMPAT,
+        $this->encoding));
       $content .= $this->Element('tspan',
         array('x' => $attribs['x'], 'dy' => $line_spacing),
         NULL, $line);
@@ -830,25 +945,6 @@ abstract class Graph {
   }
  
   /**
-   * Formats lines of text
-   */
-  protected function TextLines($text, $x, $line_spacing)
-  {
-    $start_pos = - (count($text) - 1) / 2 * $line_spacing;
-    $dy = $start_pos;
-
-    $string = '';
-    foreach($text as $line) {
-      $string .= $this->Element('tspan', array('x' => $x, 'dy' => $dy),
-        NULL, $line);
-      if($dy == $start_pos)
-        $dy = $line_spacing;
-    }
-
-    return $string;
-  }
-
-  /**
    * Builds an element
    */
   public function Element($name, $attribs = NULL, $styles = NULL,
@@ -870,7 +966,7 @@ abstract class Graph {
           if(isset($require_units[$attr]))
             $val .= 'px';
         } else {
-          $val = htmlspecialchars($val);
+          $val = htmlspecialchars($val, ENT_COMPAT, $this->encoding);
         }
         $element .= ' ' . $attr . '="' . $val . '"';
       }
@@ -883,7 +979,7 @@ abstract class Graph {
           if(isset($require_units[$attr]))
             $val .= 'px';
         } else {
-          $val = htmlspecialchars($val);
+          $val = htmlspecialchars($val, ENT_COMPAT, $this->encoding);
         }
         $element .= $attr . ':' . $val . ';';
       }
@@ -930,18 +1026,32 @@ abstract class Graph {
   }
 
   /**
+   * Sets up the colour class
+   */
+  protected function ColourSetup($count, $datasets = NULL)
+  {
+    $this->colours->Setup($count, $datasets);
+  }
+
+  /**
    * Returns a colour reference
    */
-  protected function GetColour($item, $key, $no_gradient = FALSE,
-    $allow_pattern = FALSE)
+  protected function GetColour($item, $key, $dataset = NULL,
+    $no_gradient = FALSE, $allow_pattern = FALSE)
   {
     $colour = 'none';
     $icolour = is_null($item) ? null : $item->Data('colour');
     if(!is_null($icolour)) {
       $colour = $icolour;
       $key = null; // don't reuse existing colours
-    } elseif(isset($this->colours[$key])) {
-      $colour = $this->colours[$key];
+    } else {
+      $c = $this->colours->GetColour($key, $dataset);
+      if(!is_null($c))
+        $colour = $c;
+
+      // make key reflect dataset as well (for gradients)
+      if(!is_null($dataset))
+        $key = "{$dataset}:{$key}";
     }
     return $this->ParseColour($colour, $key, $no_gradient, $allow_pattern);
   }
@@ -1044,6 +1154,13 @@ abstract class Graph {
     return $this->id_prefix . 'e' . base_convert(++Graph::$last_id, 10, 36);
   }
 
+  /**
+   * Adds markup to be inserted between graph and legend
+   */
+  public function AddBackMatter($fragment)
+  {
+    $this->back_matter .= $fragment;
+  }
 
   /**
    * Loads the Javascript class
@@ -1143,7 +1260,9 @@ abstract class Graph {
 
     $col_mul = 100 / (count($colours) - 1);
     foreach($colours as $pos => $colour) {
-      @list($colour, $opacity) = explode(':', $colour);
+      $opacity = null;
+      if(strpos($colour, ':') !== FALSE)
+        list($colour, $opacity) = explode(':', $colour);
       $stop = array(
         'offset' => round($pos * $col_mul) . '%',
         'stop-color' => $colour
@@ -1274,14 +1393,22 @@ abstract class Graph {
       // get the body content from the subclass
       $body = $this->DrawGraph();
     } catch(Exception $e) {
-      $body = $this->ErrorText($e->getMessage());
+      $err = $e->getMessage();
+      if($this->exception_details)
+        $err .= " [" . basename($e->getFile()) . ' #' . $e->getLine() . ']';
+      $body = $this->ErrorText($err);
     }
 
     $svg = array(
-      'width' => $this->width, 'height' => $this->height, 
+      'width' => $this->width, 'height' => $this->height,
       'version' => '1.1', 
       'xmlns:xlink' => 'http://www.w3.org/1999/xlink'
     );
+    if($this->auto_fit) {
+      $svg['viewBox'] = "0 0 {$this->width} {$this->height}";
+      $svg['width'] = $svg['height'] = '100%';
+    }
+
     if(!$defer_javascript) {
       $js = $this->FetchJavascript();
       if($js != '') {
@@ -1402,7 +1529,7 @@ abstract class Graph {
   public static function NumString($n, $decimals = null, $precision = null)
   {
     if(is_int($n)) {
-      $d = 0;
+      $d = is_null($decimals) ? 0 : $decimals;
     } else {
 
       if(is_null($precision))
@@ -1411,17 +1538,15 @@ abstract class Graph {
       // if there are too many zeroes before other digits, round to 0
       $e = floor(log(abs($n), 10));
       if(-$e > $precision)
-        return "0";
+        $n = 0;
 
-      if(is_null($decimals))
-        // subtract number of digits before decimal point from precision
-        $d = $precision - ($e > 0 ? $e : 0);
-      else
-        $d = $decimals;
+      // subtract number of digits before decimal point from precision
+      // for precision-based decimals
+      $d = is_null($decimals) ? $precision - ($e > 0 ? $e : 0) : $decimals;
     }
     $s = number_format($n, $d, Graph::$decimal, Graph::$thousands);
 
-    if($d && strpos($s, Graph::$decimal) !== false) {
+    if(is_null($decimals) && $d && strpos($s, Graph::$decimal) !== false) {
       list($a, $b) = explode(Graph::$decimal, $s);
       $b1 = rtrim($b, '0');
       if($b1 != '')
