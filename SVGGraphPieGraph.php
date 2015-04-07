@@ -123,53 +123,58 @@ class PieGraph extends Graph {
 
       $t_style = NULL;
       if($this->show_labels) {
+        //Only draw the label if it's below the threshold angle
+        if (abs($angle_end - $angle_start) > deg2rad($this->label_threshold_angle)) {
+          $text['id'] = $this->NewID();
+          if ($this->label_fade_in_speed && $this->compat_events) {
+            $text['opacity'] = '0.0';
+          }
 
-        $text['id'] = $this->NewID();
-        if($this->label_fade_in_speed && $this->compat_events)
-          $text['opacity'] = '0.0';
+          // display however many lines of label
+          $label = $item->Data('label');
+          if (is_null($label)) {
+            $parts = array();
+            if ($this->show_label_key) {
+              $parts = explode("\n", $this->GetKey($this->values->AssociativeKeys() ?
+                  $original_position : $key));
+            }
+            if ($this->show_label_amount) {
+              $parts[] = $this->units_before_label . Graph::NumString($value) .
+                  $this->units_label;
+            }
+            if ($this->show_label_percent) {
+              $parts[] = Graph::NumString($value / $this->total * 100.0,
+                      $this->label_percent_decimals) . '%';
+            }
+          } else {
+            $parts = array($label);
+          }
+          $parts = implode("\n", $parts);
 
-        // display however many lines of label
-        $label = $item->Data('label');
-        if(is_null($label)) {
-          $parts = array();
-          if($this->show_label_key)
-            $parts = explode("\n", $this->GetKey($this->values->AssociativeKeys() ? 
-              $original_position : $key));
-          if($this->show_label_amount)
-            $parts[] = $this->units_before_label . Graph::NumString($value) .
-              $this->units_label;
-          if($this->show_label_percent)
-            $parts[] = Graph::NumString($value / $this->total * 100.0,
-              $this->label_percent_decimals) . '%';
-        } else {
-          $parts = array($label);
+          if ($vcount > 1) {
+            list($xc, $yc) = $this->GetLabelPosition($item, $angle_start, $angle_end,
+                $radius_x, $radius_y, $parts);
+          } else {
+            $xc = $yc = 0;
+          }
+          $tx = $this->x_centre + $xc;
+          $ty = $this->y_centre + $yc;
+
+          $text['x'] = $tx;
+          $text['y'] = $ty;
+          $text['fill'] = $this->label_colour;
+          if (!empty($this->label_back_colour)) {
+            $outline = array(
+                'stroke-width'    => '3px',
+                'stroke'          => $this->label_back_colour,
+                'stroke-linejoin' => 'round',
+            );
+            $t1 = array_merge($outline, $text);
+            $labels .= $this->Text($parts, $this->label_font_size, $t1);
+          }
+          $labels .= $this->Text($parts, $this->label_font_size, $text);
         }
-        $parts = implode("\n", $parts);
-
-        if($vcount > 1) {
-          list($xc, $yc) = $this->GetLabelPosition($item, $angle_start, $angle_end,
-            $radius_x, $radius_y, $parts);
-        } else {
-          $xc = $yc = 0;
-        }
-        $tx = $this->x_centre + $xc;
-        $ty = $this->y_centre + $yc;
-
-        $text['x'] = $tx;
-        $text['y'] = $ty;
-        $text['fill'] = $this->label_colour;
-        if(!empty($this->label_back_colour)) {
-          $outline = array(
-            'stroke-width' => '3px',
-            'stroke' => $this->label_back_colour,
-            'stroke-linejoin' => 'round',
-          );
-          $t1 = array_merge($outline, $text);
-          $labels .= $this->Text($parts, $this->label_font_size, $t1);
-        }
-        $labels .= $this->Text($parts, $this->label_font_size, $text);
       }
-
       if($radius_x || $radius_y) {
         if($this->show_tooltips)
           $this->SetTooltip($attr, $item, $key, $value, !$this->compat_events);
