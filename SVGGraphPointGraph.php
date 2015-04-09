@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2010-2014 Graham Breach
+ * Copyright (C) 2010-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -49,7 +49,7 @@ abstract class PointGraph extends GridGraph {
   /**
    * Adds a marker to the list
    */
-  protected function AddMarker($x, $y, $item, $extra = NULL, $set = 0)
+  public function AddMarker($x, $y, $item, $extra = NULL, $set = 0)
   {
     $m = new Marker($x, $y, $item, $extra);
     if($this->SpecialMarker($set, $item))
@@ -60,7 +60,7 @@ abstract class PointGraph extends GridGraph {
   /**
    * Draws (linked) markers on the graph
    */
-  protected function DrawMarkers()
+  public function DrawMarkers()
   {
     if($this->marker_size == 0 || count($this->markers) == 0)
       return '';
@@ -75,6 +75,9 @@ abstract class PointGraph extends GridGraph {
     foreach(array_keys($this->marker_used) as $id) {
       $this->defs[] = $this->marker_elements[$id];
     }
+
+    if($this->semantic_classes)
+      $markers = $this->Element('g', array('class' => 'series'), NULL, $markers);
     return $markers;
   }
 
@@ -104,6 +107,8 @@ abstract class PointGraph extends GridGraph {
 
     if(is_array($marker->extra))
       $use = array_merge($marker->extra, $use);
+    if($this->semantic_classes)
+      $use['class'] = "series{$set}";
     if($this->show_tooltips)
       $this->SetTooltip($use, $marker->item, $marker->key, $marker->value);
 
@@ -117,13 +122,14 @@ abstract class PointGraph extends GridGraph {
     }
     if(!isset($this->marker_used[$id]))
       $this->marker_used[$id] = 1;
+
     return $element;
   }
 
   /**
    * Return a centred marker for the given set
    */
-  protected function DrawLegendEntry($set, $x, $y, $w, $h)
+  public function DrawLegendEntry($set, $x, $y, $w, $h)
   {
     if(!array_key_exists($set, $this->marker_ids))
       return '';
@@ -277,7 +283,6 @@ abstract class PointGraph extends GridGraph {
       $this->Element('symbol', NULL, NULL,
         $this->Element($element, $marker, NULL));
 
-
     // save this marker style for reuse
     $this->marker_types[$m_key] = $id;
     return $id;
@@ -336,6 +341,46 @@ abstract class PointGraph extends GridGraph {
       // set the ID for this data set to use
       $this->marker_ids[$set] = $this->CreateSingleMarker($set);
     }
+  }
+
+  /**
+   * Returns the position for a data label
+   */
+  public function DataLabelPosition($dataset, $index, &$item, $x, $y, $w, $h,
+    $label_w, $label_h)
+  {
+    $pos = parent::DataLabelPosition($dataset, $index, $item, $x, $y, $w, $h,
+      $label_w, $label_h);
+
+    // labels don't fit inside markers
+    $pos = str_replace(array('inner','inside'), '', $pos);
+    if(strpos($pos, 'middle') !== FALSE && strpos($pos, 'right') === FALSE &&
+      strpos($pos, 'left') === FALSE)
+      $pos = str_replace('middle', 'top', $pos);
+    if(strpos($pos, 'centre') !== FALSE && strpos($pos, 'top') === FALSE &&
+      strpos($pos, 'bottom') === FALSE)
+      $pos = str_replace('centre', 'top', $pos);
+    $pos = 'outside ' . $pos;
+    return $pos;
+  }
+
+  /**
+   * Add a marker label
+   */
+  public function MarkerLabel($dataset, $index, &$item, $x, $y)
+  {
+    if(!$this->ArrayOption($this->show_data_labels, $dataset))
+      return false;
+    $s = $this->GetFromItemOrMember('marker_size', 0, $item);
+    $s2 = $s / 2;
+    $dummy = array();
+    $label = $this->AddDataLabel($dataset, $index, $dummy, $item,
+      $x - $s2, $y - $s2, $s, $s, NULL);
+
+    if(isset($dummy['id']))
+      return $dummy['id'];
+
+    return NULL;
   }
 
   /**

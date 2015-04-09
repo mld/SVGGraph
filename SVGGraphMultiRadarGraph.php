@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2011-2014 Graham Breach
+ * Copyright (C) 2011-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -70,25 +70,30 @@ class MultiRadarGraph extends RadarGraph {
 
             // no need to repeat same L command
             $cmd = $cmd == 'M' ? 'L' : '';
-            $this->AddMarker($x, $y, $item, NULL, $i);
+            $marker_id = $this->MarkerLabel($i, $bnum, $item, $x, $y);
+            $extra = empty($marker_id) ? NULL : array('id' => $marker_id);
+            $this->AddMarker($x, $y, $item, $extra, $i);
           }
         }
         ++$bnum;
       }
 
       if($path != '') {
-        $path .= "z";
-        $attr['d'] = $path;
         $attr['stroke'] = $this->GetColour(null, 0, $i, true);
-        $plots .= $this->Element('path', $attr);
-        unset($attr['d']);
         $this->line_styles[] = $attr;
         $this->fill_styles[] = $fill_style;
+        $path .= "z";
+        $attr['d'] = $path;
+        if($this->semantic_classes)
+          $attr['class'] = "series{$i}";
+        $plots .= $this->Element('path', $attr);
       }
     }
 
     $group = array();
     $this->ClipGrid($group);
+    if($this->semantic_classes)
+      $group['class'] = "series";
     $body .= $this->Element('g', $group, NULL, $plots);
     $body .= $this->Axes();
     $body .= $this->CrossHairs();

@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2011-2014 Graham Breach
+ * Copyright (C) 2011-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -47,8 +47,11 @@ class MultiScatterGraph extends PointGraph {
         $x = $this->GridPosition($item->key, $bnum);
         if(!is_null($item->value) && !is_null($x)) {
           $y = $this->GridY($item->value, $axis);
-          if(!is_null($y))
-            $this->AddMarker($x, $y, $item, NULL, $i);
+          if(!is_null($y)) {
+            $marker_id = $this->MarkerLabel($i, $bnum, $item, $x, $y);
+            $extra = empty($marker_id) ? NULL : array('id' => $marker_id);
+            $this->AddMarker($x, $y, $item, $extra, $i);
+          }
         }
         ++$bnum;
       }

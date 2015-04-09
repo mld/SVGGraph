@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2012-2014 Graham Breach
+ * Copyright (C) 2012-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -77,7 +77,9 @@ class StackedLineGraph extends MultiLineGraph {
           // no need to repeat same L command
           $cmd = $cmd == 'M' ? 'L' : '';
           if(!is_null($item->value)) {
-            $this->AddMarker($x, $y, $item, NULL, $i);
+            $marker_id = $this->MarkerLabel($i, $bnum, $item, $x, $y);
+            $extra = empty($marker_id) ? NULL : array('id' => $marker_id);
+            $this->AddMarker($x, $y, $item, $extra, $i);
             ++$point_count;
           }
         }
@@ -87,6 +89,8 @@ class StackedLineGraph extends MultiLineGraph {
       if($point_count > 0) {
         $attr['d'] = $path;
         $attr['stroke'] = $this->GetColour(null, 0, $i, true);
+        if($this->semantic_classes)
+          $attr['class'] = "series{$i}";
         $graph_line = $this->Element('path', $attr);
         $fill_style = null;
 
@@ -107,11 +111,13 @@ class StackedLineGraph extends MultiLineGraph {
           );
           if($opacity < 1)
             $fill_style['opacity'] = $opacity;
+          if($this->semantic_classes)
+            $fill_style['class'] = "series{$i}";
           $graph_line = $this->Element('path', $fill_style) . $graph_line;
         }
 
         $plots[] = $graph_line;
-        unset($attr['d']);
+        unset($attr['d'], $attr['class'], $fill_style['class']);
         $this->line_styles[] = $attr;
         $this->fill_styles[] = $fill_style;
       }
@@ -121,7 +127,14 @@ class StackedLineGraph extends MultiLineGraph {
     $this->ClipGrid($group);
 
     $plots = array_reverse($plots);
-    $body .= $this->Element('g', $group, NULL, implode($plots));
+    $all_plots = '';
+    if($this->semantic_classes) {
+      foreach($plots as $p)
+        $all_plots .= $this->Element('g', array('class' => 'series'), NULL, $p);
+    } else {
+      $all_plots = implode($plots);
+    }
+    $body .= $this->Element('g', $group, NULL, $all_plots);
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE);
     $body .= $this->Axes();
     $body .= $this->CrossHairs();

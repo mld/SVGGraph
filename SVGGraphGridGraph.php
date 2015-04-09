@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2009-2014 Graham Breach
+ * Copyright (C) 2009-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -627,6 +627,9 @@ abstract class GridGraph extends Graph {
         $x_decimal_digits = $this->GetFirst(
           $this->ArrayOption($this->decimal_digits_y, $i),
           $this->decimal_digits);
+        $x_text_callback = $this->GetFirst(
+          $this->ArrayOption($this->axis_text_callback_y, $i),
+          $this->axis_text_callback);
       } else {
         $max_h = $ends['k_max'][$i];
         $min_h = $ends['k_min'][$i];
@@ -637,6 +640,9 @@ abstract class GridGraph extends Graph {
         $x_decimal_digits = $this->GetFirst(
           $this->ArrayOption($this->decimal_digits_x, $i),
           $this->decimal_digits);
+        $x_text_callback = $this->GetFirst(
+          $this->ArrayOption($this->axis_text_callback_x, $i),
+          $this->axis_text_callback);
       }
 
       if(!is_numeric($max_h) || !is_numeric($min_h))
@@ -649,10 +655,10 @@ abstract class GridGraph extends Graph {
           $grid_division);
       elseif(!is_numeric($grid_division))
         $x_axis = new Axis($x_len, $max_h, $min_h, $x_min_unit, $x_fit,
-          $x_units_before, $x_units_after, $x_decimal_digits);
+          $x_units_before, $x_units_after, $x_decimal_digits, $x_text_callback);
       else
         $x_axis = new AxisFixed($x_len, $max_h, $min_h, $grid_division,
-          $x_units_before, $x_units_after, $x_decimal_digits);
+          $x_units_before, $x_units_after, $x_decimal_digits, $x_text_callback);
       $x_axes[] = $x_axis;
     }
 
@@ -680,6 +686,9 @@ abstract class GridGraph extends Graph {
         $y_decimal_digits = $this->GetFirst(
           $this->ArrayOption($this->decimal_digits_x, $i),
           $this->decimal_digits);
+        $y_text_callback = $this->GetFirst(
+          $this->ArrayOption($this->axis_text_callback_x, $i),
+          $this->axis_text_callback);
 
       } else {
         $max_v = $ends['v_max'][$i];
@@ -691,6 +700,9 @@ abstract class GridGraph extends Graph {
         $y_decimal_digits = $this->GetFirst(
           $this->ArrayOption($this->decimal_digits_y, $i),
           $this->decimal_digits);
+        $y_text_callback = $this->GetFirst(
+          $this->ArrayOption($this->axis_text_callback_y, $i),
+          $this->axis_text_callback);
       }
 
       if(!is_numeric($max_v) || !is_numeric($min_v))
@@ -703,10 +715,10 @@ abstract class GridGraph extends Graph {
           $grid_division);
       elseif(!is_numeric($grid_division))
         $y_axis = new Axis($y_len, $max_v, $min_v, $y_min_unit, $y_fit,
-          $y_units_before, $y_units_after, $y_decimal_digits);
+          $y_units_before, $y_units_after, $y_decimal_digits, $y_text_callback);
       else
         $y_axis = new AxisFixed($y_len, $max_v, $min_v, $grid_division,
-          $y_units_before, $y_units_after, $y_decimal_digits);
+          $y_units_before, $y_units_after, $y_decimal_digits, $y_text_callback);
 
       $y_axis->Reverse(); // because axis starts at bottom
 
@@ -1013,7 +1025,7 @@ abstract class GridGraph extends Graph {
       if($inside && !$label_centre_x && $key == '0')
         $key = '';
 
-      if(mb_strlen($key, $this->encoding) > 0 && $x - $x_prev >= $min_space
+      if(SVGGraphStrlen($key, $this->encoding) > 0 && $x - $x_prev >= $min_space
          &&  (++$p < $count || !$label_centre_x)) {
         $position['x'] = $x + $xoff;
         if($angle != 0) {
@@ -1079,7 +1091,7 @@ abstract class GridGraph extends Graph {
       if($inside && !$label_centre_y && !$axis_no && $key == '0')
         $key = '';
 
-      if(mb_strlen($key, $this->encoding) && $y_prev - $y >= $min_space &&
+      if(SVGGraphStrlen($key, $this->encoding) && $y_prev - $y >= $min_space &&
         (++$p < $count || !$label_centre_y)) {
         $position['y'] = $y + $text_centre + $yoff;
         if($angle != 0) {
@@ -1769,7 +1781,9 @@ XML;
    */
   protected function GridX($x, $axis_no = NULL)
   {
-    $axis = $this->x_axes[is_null($axis_no) ? $this->main_x_axis : $axis_no];
+    if(is_null($axis_no) || is_null($this->x_axes[$axis_no]))
+      $axis_no = $this->main_x_axis;
+    $axis = $this->x_axes[$axis_no];
     $p = $axis->Position($x);
     if(!is_null($p))
       return $this->pad_left + $p;
@@ -1781,7 +1795,9 @@ XML;
    */
   protected function GridY($y, $axis_no = NULL)
   {
-    $axis = $this->y_axes[is_null($axis_no) ? $this->main_y_axis : $axis_no];
+    if(is_null($axis_no) || is_null($this->y_axes[$axis_no]))
+      $axis_no = $this->main_y_axis;
+    $axis = $this->y_axes[$axis_no];
     $p = $axis->Position($y);
     if(!is_null($p))
       return $this->height - $this->pad_bottom - $p;
@@ -1793,7 +1809,9 @@ XML;
    */
   protected function OriginX($axis_no = NULL)
   {
-    $axis = $this->x_axes[is_null($axis_no) ? $this->main_x_axis : $axis_no];
+    if(is_null($axis_no) || is_null($this->x_axes[$axis_no]))
+      $axis_no = $this->main_x_axis;
+    $axis = $this->x_axes[$axis_no];
     return $this->pad_left + $axis->Origin();
   }
 
@@ -1802,7 +1820,9 @@ XML;
    */
   protected function OriginY($axis_no = NULL)
   {
-    $axis = $this->y_axes[is_null($axis_no) ? $this->main_y_axis : $axis_no];
+    if(is_null($axis_no) || is_null($this->y_axes[$axis_no]))
+      $axis_no = $this->main_y_axis;
+    $axis = $this->y_axes[$axis_no];
     return $this->height - $this->pad_bottom - $axis->Origin();
   }
 
@@ -1995,16 +2015,18 @@ XML;
       list($text_w, $text_h) = $this->TextSize($line['title'], 
         $font_size, $font_adjust, $this->encoding, $text_angle, $font_size);
 
-      list($x, $y, $text_right) = Graph::RelativePosition(
+      list($x, $y, $text_pos_align) = Graph::RelativePosition(
         $text_pos, $y, $x, $y + $h, $x + $w,
         $text_w, $text_h, $text_pad, true);
 
       $t = array('x' => $x, 'y' => $y + $font_size);
-      if($text_right && empty($text_align))
-        $text_align = 'right';
-      $align_map = array('right' => 'end', 'centre' => 'middle');
-      if(!empty($text_align) && isset($align_map[$text_align]))
-        $t['text-anchor'] = $align_map[$text_align];
+      if(empty($text_align) && $text_pos_align != 'start') {
+        $t['text-anchor'] = $text_pos_align;
+      } else {
+        $align_map = array('right' => 'end', 'centre' => 'middle');
+        if(isset($align_map[$text_align]))
+          $t['text-anchor'] = $align_map[$text_align];
+      }
 
       if($text_angle != 0) {
         $rx = $x + $text_h/2;

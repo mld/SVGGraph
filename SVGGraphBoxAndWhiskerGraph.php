@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2013-2014 Graham Breach
+ * Copyright (C) 2013-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -34,14 +34,13 @@ class BoxAndWhiskerGraph extends PointGraph {
     $body = $this->Grid() . $this->Guidelines(SVGG_GUIDELINE_BELOW);
 
     $bar_width = $this->BarWidth();
-  
     $x_axis = $this->x_axes[$this->main_x_axis];
     $box_style = array();
 
     $bspace = max(0, ($this->x_axes[$this->main_x_axis]->Unit() - $bar_width) / 2);
     $bnum = 0;
     $this->ColourSetup($this->values->ItemsCount());
-
+    $series = '';
     foreach($this->values[0] as $item) {
       $bar_pos = $this->GridPosition($item->key, $bnum);
 
@@ -56,12 +55,18 @@ class BoxAndWhiskerGraph extends PointGraph {
 
         // wrap the whisker box in a group
         $g = array();
+        $show_label = $this->AddDataLabel(0, $bnum, $g, $item,
+          $bspace + $bar_pos, $this->GridY($item->Data('top')), $bar_width,
+          $this->GridY($item->Data('bottom')) - $this->GridY($item->Data('top'))
+        );
         if($this->show_tooltips)
           $this->SetTooltip($g, $item, $item->value, null,
-            !$this->compat_events && $this->show_bar_labels);
+            !$this->compat_events && $this->show_label);
 
+        if($this->semantic_classes)
+          $g['class'] = "series0";
         $group = $this->Element('g', array_merge($g, $box_style), null, $shape);
-        $body .= $this->GetLink($item, $item->key, $group);
+        $series .= $this->GetLink($item, $item->key, $group);
         $this->box_styles[$bnum] = $box_style;
 
         // add outliers as markers
@@ -74,7 +79,9 @@ class BoxAndWhiskerGraph extends PointGraph {
       ++$bnum;
     }
 
-    $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
+    if($this->semantic_classes)
+      $series = $this->Element('g', array('class' => 'series'), NULL, $series);
+    $body .= $series . $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     $body .= $this->DrawMarkers();
     return $body;
   }
@@ -156,7 +163,7 @@ class BoxAndWhiskerGraph extends PointGraph {
   /**
    * Return box for legend
    */
-  protected function DrawLegendEntry($set, $x, $y, $w, $h)
+  public function DrawLegendEntry($set, $x, $y, $w, $h)
   {
     if(!isset($this->box_styles[$set]))
       return '';

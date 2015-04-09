@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2014 Graham Breach
+ * Copyright (C) 2014-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -20,11 +20,11 @@
  */
 
 require_once 'SVGGraphMultiGraph.php';
-require_once 'SVGGraphBarGraph.php';
+require_once 'SVGGraphStackedBarGraph.php';
 require_once 'SVGGraphGroupedBarGraph.php'; // for BarPosition()
 require_once 'SVGGraphData.php';
 
-class StackedGroupedBarGraph extends BarGraph {
+class StackedGroupedBarGraph extends StackedBarGraph {
 
   protected $single_axis = true;
 
@@ -49,6 +49,7 @@ class StackedGroupedBarGraph extends BarGraph {
     $bnum = 0;
     $bar_count = count($this->multi_graph);
     $bars_shown = array_fill(0, $bar_count, 0); // for legend yes/no
+    $bars = '';
     $this->ColourSetup($this->multi_graph->ItemsCount(-1), $bar_count);
 
     foreach($this->multi_graph as $itemlist) {
@@ -63,8 +64,6 @@ class StackedGroupedBarGraph extends BarGraph {
           $end_bar = isset($this->groups[$l + 1]) ? $this->groups[$l + 1] : $bar_count;
 
           $ypos = $yneg = 0;
-          $label_pos_position = $label_neg_position = $this->show_bar_labels ? 
-            $this->bar_label_position : '';
 
           // find greatest -/+ bar
           $max_neg_bar = $max_pos_bar = -1;
@@ -89,20 +88,15 @@ class StackedGroupedBarGraph extends BarGraph {
               if($bar['height'] > 0) {
                 ++$bars_shown[$j];
 
+                $show_label = $this->AddDataLabel($j, $bnum, $bar, $item,
+                  $bar['x'], $bar['y'], $bar['width'], $bar['height']);
                 if($this->show_tooltips)
                   $this->SetTooltip($bar, $item, $item->value, null,
-                    !$this->compat_events && $this->show_bar_labels);
+                    !$this->compat_events && $show_label);
+                if($this->semantic_classes)
+                  $bar['class'] = "series{$j}";
                 $rect = $this->Element('rect', $bar, $bar_style);
-                if($this->show_bar_labels) {
-                  if($item->value < 0) {
-                    $label_neg_position = $this->BarLabelPosition($bar);
-                    $rect .= $this->BarLabel($item, $bar, $j < $max_neg_bar);
-                  } else {
-                    $label_pos_position = $this->BarLabelPosition($bar);
-                    $rect .= $this->BarLabel($item, $bar, $j < $max_pos_bar);
-                  }
-                }
-                $body .= $this->GetLink($item, $k, $rect);
+                $bars .= $this->GetLink($item, $k, $rect);
                 unset($bar['id']); // clear for next value
               }
             }
@@ -110,10 +104,17 @@ class StackedGroupedBarGraph extends BarGraph {
           }
           if($this->show_bar_totals) {
             if($ypos) {
-              $body .= $this->BarTotal($ypos, $bar, $label_pos_position == 'above');
+              // make a dataset name for stack total
+              $tds = 'totalpos-' . $start_bar;
+              $this->Bar($ypos, $bar);
+              $this->AddContentLabel($tds, $bnum, $bar['x'], $bar['y'],
+                $bar['width'], $bar['height'], $ypos);
             }
             if($yneg) {
-              $body .= $this->BarTotal($yneg, $bar, $label_neg_position == 'above');
+              $tds = 'totalneg-' . $start_bar;
+              $this->Bar($yneg, $bar);
+              $this->AddContentLabel($tds, $bnum, $bar['x'], $bar['y'],
+                $bar['width'], $bar['height'], $yneg);
             }
           }
         }
@@ -127,6 +128,9 @@ class StackedGroupedBarGraph extends BarGraph {
       }
     }
 
+    if($this->semantic_classes)
+      $bars = $this->Element('g', array('class' => 'series'), NULL, $bars);
+    $body .= $bars;
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     return $body;
   }
@@ -174,67 +178,6 @@ class StackedGroupedBarGraph extends BarGraph {
   }
 
   /**
-   * Overridden to prevent drawing behind higher bars
-   * $offset_y should be true for inner bars
-   */
-  protected function BarLabel(&$item, &$bar, $offset_y = null)
-  {
-    $font_size = $this->bar_label_font_size;
-    $space = $this->bar_label_space;
-    if($offset_y) {
-
-      // bar too small, would be above
-      if($bar['height'] < $font_size + 2 * $space)
-        return parent::BarLabel($item, $bar, ($bar['height'] + $font_size)/2);
-
-      // option set to above
-      if($this->bar_label_position == 'above') {
-        $this->bar_label_position = 'top';
-        $label = parent::BarLabel($item, $bar);
-        $this->bar_label_position = 'above';
-        return $label;
-      }
-    }
-    return parent::BarLabel($item, $bar);
-  }
-
-  /**
-   * Bar total label
-   */
-  protected function BarTotal($total, &$bar, $label_above)
-  {
-    $this->Bar($total, $bar);
-    $content = $this->units_before_label . Graph::NumString($total) .
-      $this->units_label;
-    $font_size = $this->bar_total_font_size;
-    $space = $this->bar_total_space;
-    $x = $bar['x'] + ($bar['width'] / 2);
-
-    $swap = ($bar['y'] >= $this->height - $this->pad_bottom - 
-      $this->y_axes[$this->main_y_axis]->Zero());
-    $y = $swap ? $bar['y'] + $bar['height'] + $font_size + $space : $bar['y'] - $space;
-    $offset = 0;
-
-    // make space for label
-    if($label_above) {
-      $offset = $this->bar_label_font_size + $this->bar_label_space;
-      if(!$swap)
-        $offset = -$offset;
-    }
-    $text = array(
-      'x' => $x,
-      'y' => $y + $offset,
-      'text-anchor' => 'middle',
-      'font-family' => $this->bar_total_font,
-      'font-size' => $font_size,
-      'fill' => $this->bar_total_colour,
-    );
-    if($this->bar_total_font_weight != 'normal')
-      $text['font-weight'] = $this->bar_total_font_weight;
-    return $this->Element('text', $text, NULL, $content);
-  }
-
-  /**
    * Returns the maximum (stacked) value
    */
   protected function GetMaxValue()
@@ -272,7 +215,7 @@ class StackedGroupedBarGraph extends BarGraph {
       $start = $end + 1;
     }
     return $min;
-    return $this->multi_graph->GetMinSumValue();
   }
+
 }
 

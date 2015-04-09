@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2010-2013 Graham Breach
+ * Copyright (C) 2010-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -43,8 +43,11 @@ class ScatterGraph extends PointGraph {
       $x = $this->GridPosition($item->key, $bnum);
       if(!is_null($item->value) && !is_null($x)) {
         $y = $this->GridY($item->value);
-        if(!is_null($y))
-          $this->AddMarker($x, $y, $item);
+        if(!is_null($y)) {
+          $marker_id = $this->MarkerLabel(0, $bnum, $item, $x, $y);
+          $extra = empty($marker_id) ? NULL : array('id' => $marker_id);
+          $this->AddMarker($x, $y, $item, $extra);
+        }
       }
       ++$bnum;
     }

@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2012-2014 Graham Breach
+ * Copyright (C) 2012-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -77,12 +77,13 @@ class RadarGraph extends LineGraph {
           $angle = $this->arad + $point_pos / $this->g_height;
           $x = $this->xc + ($val * sin($angle));
           $y = $this->yc + ($val * cos($angle));
-
           $path .= "$cmd$x $y ";
 
           // no need to repeat same L command
           $cmd = $cmd == 'M' ? 'L' : '';
-          $this->AddMarker($x, $y, $item);
+          $marker_id = $this->MarkerLabel(0, $bnum, $item, $x, $y);
+          $extra = empty($marker_id) ? NULL : array('id' => $marker_id);
+          $this->AddMarker($x, $y, $item, $extra);
         }
       }
       ++$bnum;
@@ -93,7 +94,13 @@ class RadarGraph extends LineGraph {
     $this->line_styles[0] = $attr;
     $attr['d'] = $path;
     $group = array();
+
     $this->ClipGrid($group);
+    if($this->semantic_classes) {
+      $group['class'] = 'series';
+      $attr['class'] = "series0";
+    }
+
     $body .= $this->Element('g', $group, NULL, $this->Element('path', $attr));
     $body .= $this->Axes();
     $body .= $this->CrossHairs();
@@ -518,7 +525,7 @@ class RadarGraph extends LineGraph {
       $k = $this->GetKey($grid_point->value);
       if($k !== $grid_point->value)
         $key = $k;
-      if(mb_strlen($key, $this->encoding) > 0 && ++$p < $count) {
+      if(SVGGraphStrlen($key, $this->encoding) > 0 && ++$p < $count) {
         $a = $this->arad + $direction * $x / $this->radius;
         $s = sin($a);
         $c = cos($a);
@@ -621,7 +628,7 @@ class RadarGraph extends LineGraph {
     foreach($points as $grid_point) {
       $key = $grid_point->text;
       $y = $grid_point->position;
-      if(mb_strlen($key, $this->encoding) > 0) {
+      if(SVGGraphStrlen($key, $this->encoding) > 0) {
         $x1 = $y * $s;
         $y1 = $y * $c;
         $position['x'] = $this->xc + $x1 + $x2 + $x3;

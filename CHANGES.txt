@@ -1,3 +1,16 @@
+Version 2.18 (03/04/2015)
+------------
+- Added bar and line graph.
+- Added data label options for all graph types.
+- Added semantic_classes option.
+- Added axis text callback options.
+- Added detection of mbstring extension. If not available, fall back to basic
+  string functions.
+- Added check for too many divisions being created.
+- Fixed broken axis_right option on some multi-dataset graphs.
+- Fixed legend dragging.
+- Fixed divide by zero error in colour range function.
+
 Version 2.17 (27/11/2014)
 ------------
 - Added fixed axis positioning options.

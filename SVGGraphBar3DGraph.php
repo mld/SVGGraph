@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2009-2014 Graham Breach
+ * Copyright (C) 2009-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -44,10 +44,17 @@ class Bar3DGraph extends ThreeDGraph {
 
     // get the translation for the whole bar
     list($tx, $ty) = $this->Project(0, 0, $bspace);
-    $group = array('transform' => "translate($tx,$ty)");
-    $bar = array('width' => $bar_width);
+    $all_group = array();
+    if($tx || $ty)
+      $all_group['transform'] = "translate($tx,$ty)";
 
+    $bar = array('width' => $bar_width);
     $bars = '';
+    $group = array();
+    if($this->semantic_classes) {
+      $all_group['class'] = 'series';
+      $group['class'] = 'series0';
+    }
     foreach($this->values[0] as $item) {
       $bar_pos = $this->GridPosition($item->key, $bnum);
 
@@ -64,6 +71,8 @@ class Bar3DGraph extends ThreeDGraph {
 
         $bar_sections = $this->Bar3D($item, $bar, $top, $bnum);
         if($bar_sections != '') {
+          $show_label = $this->AddDataLabel(0, $bnum, $group, $item,
+            $bar['x'] + $tx, $bar['y'] + $ty, $bar['width'], $bar['height']);
           $link = $this->GetLink($item, $item->key, $bar_sections);
 
           $group = array_merge($group, $bar_style);
@@ -77,6 +86,8 @@ class Bar3DGraph extends ThreeDGraph {
       ++$bnum;
     }
 
+    if(count($all_group))
+      $bars = $this->Element('g', $all_group, NULL, $bars);
     $body .= $bars;
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     return $body;
