@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2012-2014 Graham Breach
+ * Copyright (C) 2012-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -26,6 +26,8 @@ class CylinderGraph extends Bar3DGraph {
   protected $bar_styles = array();
   protected $label_centre = true;
   protected $transform;
+  protected $tx;
+  protected $ty;
   protected $arc_path;
   protected $cyl_offset_x;
   protected $cyl_offset_y;
@@ -39,6 +41,8 @@ class CylinderGraph extends Bar3DGraph {
     list($sx, $sy) = $this->Project(0, 0, $this->block_width);
     $tx = ($this->block_width + $sx) / 2;
     $ty = $sy / 2;
+    $this->tx = $tx;
+    $this->ty = $ty;
     $this->transform = "translate($tx,$ty)";
 
     // use the ellipse info to create the bottom arc

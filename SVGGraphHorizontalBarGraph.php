@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2011-2014 Graham Breach
+ * Copyright (C) 2011-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -28,6 +28,15 @@ class HorizontalBarGraph extends GridGraph {
   protected $legend_reverse = true;
   protected $bar_styles = array();
 
+  public function __construct($w, $h, $settings = NULL)
+  {
+    // backwards compatibility
+    if(isset($settings['show_bar_labels']))
+      $settings['show_data_labels'] = $settings['show_bar_labels'];
+
+    parent::__construct($w, $h, $settings);
+  }
+
   protected function Draw()
   {
     $body = $this->Grid() . $this->Guidelines(SVGG_GUIDELINE_BELOW);
@@ -36,6 +45,7 @@ class HorizontalBarGraph extends GridGraph {
     $this->ColourSetup($this->values->ItemsCount());
 
     $bnum = 0;
+    $series = '';
     foreach($this->values[0] as $item) {
       $bar = array('height' => $bar_height);
       $bar_pos = $this->GridPosition($item->key, $bnum);
@@ -51,20 +61,24 @@ class HorizontalBarGraph extends GridGraph {
         $this->Bar($item->value, $bar);
 
         if($bar['width'] > 0) {
+          $show_label = $this->AddDataLabel(0, $bnum, $bar, $item,
+            $bar['x'], $bar['y'], $bar['width'], $bar['height']);
           if($this->show_tooltips)
             $this->SetTooltip($bar, $item, $item->value, null,
-              !$this->compat_events && $this->show_bar_labels);
+              !$this->compat_events && $show_label);
+          if($this->semantic_classes)
+            $bar['class'] = "series0";
           $rect = $this->Element('rect', $bar, $bar_style);
-          if($this->show_bar_labels)
-            $rect .= $this->BarLabel($item, $bar);
-          $body .= $this->GetLink($item, $item->key, $rect);
+          $series .= $this->GetLink($item, $item->key, $rect);
         }
       }
       $this->bar_styles[] = $bar_style;
       ++$bnum;
     }
 
-    $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
+    if($this->semantic_classes)
+      $series = $this->Element('g', array('class' => 'series'), NULL, $series);
+    $body .= $series . $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     return $body;
   }
 
@@ -107,88 +121,51 @@ class HorizontalBarGraph extends GridGraph {
   }
 
   /**
-   * Returns the position for a bar label
+   * Returns the position for a data label
    */
-  protected function BarLabelPosition(&$item, &$bar)
+  public function DataLabelPosition($dataset, $index, &$item, $x, $y, $w, $h,
+    $label_w, $label_h)
   {
-    $content = $item->Data('label');
-    if(is_null($content))
-      $content = $this->units_before_label . Graph::NumString($item->value) .
-        $this->units_label;
-    list($text_size) = $this->TextSize($content, $this->bar_label_font_size,
-      $this->bar_label_font_adjust, $this->encoding);
+    $pos = parent::DataLabelPosition($dataset, $index, $item, $x, $y, $w, $h,
+      $label_w, $label_h);
+    $bpos = $this->bar_label_position;
+    if(!empty($bpos))
+      $pos = $bpos;
 
-    $pos = $this->bar_label_position;
-    if(empty($pos))
-      $pos = 'top';
-    $top = $bar['x'] + $bar['width'] - $this->bar_label_space;
-    $bottom = $bar['x'] + $this->bar_label_space;
+    if($label_w > $w && Graph::IsPositionInside($pos))
+      $pos = str_replace(array('left','centre','right'), 'outside right inside', $pos);
 
-    if($top - $text_size < $bottom)
-      $pos = 'above';
+    // flip sides for negative values
+    if($item->value < 0) {
+      if(strpos($pos, 'right') !== FALSE)
+        $pos = str_replace('right', 'left', $pos);
+      elseif(strpos($pos, 'left') !== FALSE)
+        $pos = str_replace('left', 'right', $pos);
+    }
     return $pos;
   }
 
   /**
-   * Text labels in or above the bar
+   * Returns the style options for bar labels
    */
-  protected function BarLabel(&$item, &$bar, $offset_x = null)
+  public function DataLabelStyle($dataset, $index, &$item)
   {
-    $content = $item->Data('label');
-    if(is_null($content))
-      $content = $this->units_before_label . Graph::NumString($item->value) .
-        $this->units_label;
-    $font_size = $this->bar_label_font_size;
-    $y = $bar['y'] + ($bar['height'] + $font_size) / 2 - $font_size / 8;
-    $colour = $this->bar_label_colour;
-    $acolour = $this->bar_label_colour_above;
-    $anchor = 'end';
+    $style = parent::DataLabelStyle($dataset, $index, $item);
 
-    if(!is_null($offset_x)) {
-      $x = $bar['x'] + $bar['width'] - $offset_x;
-      $anchor = 'start';
-    } else {
-      $pos = $this->BarLabelPosition($item, $bar);
-      $top = $bar['x'] + $bar['width'] - $this->bar_label_space;
-      $bottom = $bar['x'] + $this->bar_label_space;
-
-      $swap = ($bar['x'] + $bar['width'] <= $this->pad_left + 
-        $this->x_axes[$this->main_x_axis]->Zero());
-      switch($pos) {
-      case 'above' :
-        $x = $swap ? $bottom - $this->bar_label_space * 2 :
-          $top + $this->bar_label_space * 2;
-        $anchor = $swap ? 'end' : 'start';
-        if(!empty($acolour))
-          $colour = $acolour;
-        break;
-      case 'bottom' :
-        $x = $swap ? $top : $bottom;
-        $anchor = $swap ? 'end' : 'start';
-        break;
-      case 'centre' :
-        $x = $bar['x'] + $bar['width'] / 2;
-        $anchor = 'middle';
-        break;
-      case 'top' :
-      default :
-        $x = $swap ? $bottom : $top;
-        $anchor = $swap ? 'start' : 'end';
-        break;
-      }
-    }
-
-    $text = array(
-      'x' => $x,
-      'y' => $y,
-      'text-anchor' => $anchor,
-      'font-family' => $this->bar_label_font,
-      'font-size' => $font_size,
-      'fill' => $colour,
+    // bar label settings can override global settings
+    $opts = array(
+      'font' => 'bar_label_font',
+      'font_size' => 'bar_label_font_size',
+      'font_weight' => 'bar_label_font_weight',
+      'font_adjust' => 'bar_label_font_adjust',
+      'colour' => 'bar_label_colour',
+      'altcolour' => 'bar_label_colour_above',
+      'space' => 'bar_label_space',
     );
-    if($this->bar_label_font_weight != 'normal')
-      $text['font-weight'] = $this->bar_label_font_weight;
-    return $this->Element('text', $text, NULL, $content);
+    foreach($opts as $key => $opt)
+      if(isset($this->settings[$opt]))
+        $style[$key] = $this->settings[$opt];
+    return $style;
   }
 
   /**

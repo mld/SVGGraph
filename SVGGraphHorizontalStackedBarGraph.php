@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2011-2014 Graham Breach
+ * Copyright (C) 2011-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -21,11 +21,16 @@
 
 require_once 'SVGGraphMultiGraph.php';
 require_once 'SVGGraphHorizontalBarGraph.php';
+require_once 'SVGGraphData.php';
 
 class HorizontalStackedBarGraph extends HorizontalBarGraph {
 
   protected $legend_reverse = false;
   protected $single_axis = true;
+
+  // used to determine where the total label should go
+  protected $last_position_pos = array();
+  protected $last_position_neg = array();
 
   protected function Draw()
   {
@@ -45,15 +50,13 @@ class HorizontalStackedBarGraph extends HorizontalBarGraph {
     $bars_shown = array_fill(0, $chunk_count, 0);
     $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
 
+    $bars = '';
     foreach($this->multi_graph as $itemlist) {
       $k = $itemlist[0]->key;
       $bar_pos = $this->GridPosition($k, $bnum);
       if(!is_null($bar_pos)) {
         $bar['y'] = $bar_pos - $bspace - $bar_height;
-
         $xpos = $xneg = 0;
-        $label_pos_position = $label_neg_position = $this->show_bar_labels ? 
-          $this->bar_label_position : '';
 
         // find greatest -/+ bar
         $max_neg_bar = $max_pos_bar = -1;
@@ -68,41 +71,40 @@ class HorizontalStackedBarGraph extends HorizontalBarGraph {
           $this->SetStroke($bar_style, $item, $j);
           $bar_style['fill'] = $this->GetColour($item, $bnum, $j);
 
-          $this->Bar($item->value, $bar, $item->value >= 0 ? $xpos : $xneg);
-          if($item->value < 0)
-            $xneg += $item->value;
-          else
-            $xpos += $item->value;
+          if(!is_null($item->value)) {
+            $this->Bar($item->value, $bar, $item->value >= 0 ? $xpos : $xneg);
+            if($item->value < 0)
+              $xneg += $item->value;
+            else
+              $xpos += $item->value;
 
-          if($bar['width'] > 0) {
+            if($bar['width'] > 0) {
               ++$bars_shown[$j];
 
-            if($this->show_tooltips)
-              $this->SetTooltip($bar, $item, $item->value, null,
-                !$this->compat_events && $this->show_bar_labels);
-            $rect = $this->Element('rect', $bar, $bar_style);
-            if($this->show_bar_labels) {
-              if($item->value < 0) {
-                $label_neg_position = $this->BarLabelPosition($item, $bar);
-                $rect .= $this->BarLabel($item, $bar, $j < $max_neg_bar);
-              } else {
-                $label_pos_position = $this->BarLabelPosition($item, $bar);
-                $rect .= $this->BarLabel($item, $bar, $j < $max_pos_bar);
-              }
+              $show_label = $this->AddDataLabel($j, $bnum, $bar, $item,
+                $bar['x'], $bar['y'], $bar['width'], $bar['height']);
+              if($this->show_tooltips)
+                $this->SetTooltip($bar, $item, $item->value, null,
+                  !$this->compat_events && $show_label);
+              if($this->semantic_classes)
+                $bar['class'] = "series{$j}";
+              $rect = $this->Element('rect', $bar, $bar_style);
+              $bars .= $this->GetLink($item, $k, $rect);
+              unset($bar['id']); // clear ID for next generated value
             }
-            $body .= $this->GetLink($item, $k, $rect);
-            unset($bar['id']); // clear ID for next generated value
           }
           $this->bar_styles[$j] = $bar_style;
         }
         if($this->show_bar_totals) {
           if($xpos) {
-            $body .= $this->BarTotal($xpos, $bar, $label_pos_position == 'above' ?
-              $itemlist[$max_pos_bar] : false);
+            $this->Bar($xpos, $bar);
+            $this->AddContentLabel('totalpos', $bnum, $bar['x'], $bar['y'],
+              $bar['width'], $bar['height'], $xpos);
           }
           if($xneg) {
-            $body .= $this->BarTotal($xneg, $bar, $label_neg_position == 'above' ?
-              $itemlist[$max_neg_bar] : false);
+            $this->Bar($xneg, $bar);
+            $this->AddContentLabel('totalneg', $bnum, $bar['x'], $bar['y'],
+              $bar['width'], $bar['height'], $xneg);
           }
         }
       }
@@ -115,93 +117,99 @@ class HorizontalStackedBarGraph extends HorizontalBarGraph {
       }
     }
 
+    if($this->semantic_classes)
+      $bars = $this->Element('g', array('class' => 'series'), NULL, $bars);
+    $body .= $bars;
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     return $body;
   }
 
   /**
-   * Overridden to prevent drawing behind higher bars
-   * $offset_x should be true for inner bars
+   * Overridden to prevent drawing on other bars
    */
-  protected function BarLabel(&$item, &$bar, $offset_x = null)
+  public function DataLabelPosition($dataset, $index, &$item, $x, $y, $w, $h,
+    $label_w, $label_h)
   {
-    $content = $item->Data('label');
-    if(is_null($content))
-      $content = $this->units_before_label . Graph::NumString($item->value) .
-        $this->units_label;
-    list($text_size) = $this->TextSize($content, $this->bar_label_font_size,
-      $this->bar_label_font_adjust, $this->encoding);
-    $space = $this->bar_label_space;
-    if($offset_x) {
-
-      // bar too small, would be above
-      if($bar['width'] < $text_size + 2 * $space)
-        return parent::BarLabel($item, $bar, ($bar['width'] + $text_size)/2);
-
-      // option set to above
-      if($this->bar_label_position == 'above') {
-        $this->bar_label_position = 'top';
-        $label = parent::BarLabel($item, $bar);
-        $this->bar_label_position = 'above';
-        return $label;
+    if(!is_numeric($dataset)) {
+      if($dataset === 'totalpos') {
+        if(isset($this->last_position_pos[$index])) {
+          list($lpos, $l_w) = $this->last_position_pos[$index];
+          list($hpos, $vpos) = Graph::TranslatePosition($lpos);
+          if($hpos == 'or')
+            return "middle outside right {$l_w} 0";
+        }
+        return 'outside right';
+      }
+      if($dataset === 'totalneg') {
+        if(isset($this->last_position_neg[$index])) {
+          list($lpos, $l_w) = $this->last_position_neg[$index];
+          list($hpos, $vpos) = Graph::TranslatePosition($lpos);
+          if($hpos == 'ol')
+            return "middle outside left -{$l_w} 0";
+        }
+        return 'outside left';
       }
     }
-    return parent::BarLabel($item, $bar);
+    if($dataset === 'totalpos')
+      return 'outside right';
+    if($dataset === 'totalneg')
+      return 'outside left';
+
+    $pos = parent::DataLabelPosition($dataset, $index, $item, $x, $y, $w, $h,
+      $label_w, $label_h);
+    if($label_w > $w && Graph::IsPositionInside($pos))
+      $pos = str_replace(array('outside left','outside right'), 'centre', $pos);
+
+    if($item->value > 0)
+      $this->last_position_pos[$index] = array($pos, $label_w);
+    else
+      $this->last_position_neg[$index] = array($pos, $label_w);
+    return $pos;
   }
 
   /**
-   * Bar total label
-   * $label_above is the item that is above the bar
+   * Returns the style options for labels
    */
-  protected function BarTotal($total, &$bar, $label_above)
+  public function DataLabelStyle($dataset, $index, &$item)
   {
-    $this->Bar($total, $bar);
-    $content = $this->units_before_label . Graph::NumString($total) .
-      $this->units_label;
-    $font_size = $this->bar_total_font_size;
-    $space = $this->bar_total_space;
-    $x = $bar['x'] + ($bar['width'] / 2);
+    $style = parent::DataLabelStyle($dataset, $index, $item);
 
-    $font_size = $this->bar_total_font_size;
-    $y = $bar['y'] + ($bar['height'] + $font_size) / 2 - $font_size / 8;
-    $anchor = 'end';
+    if($dataset === 'totalpos' || $dataset === 'totalneg') {
+      // total settings can override label settings
+      $opts = array(
+        'font' => 'bar_total_font',
+        'font_size' => 'bar_total_font_size',
+        'font_weight' => 'bar_total_font_weight',
+        'colour' => 'bar_total_colour',
+        'space' => 'bar_total_space',
+        'type' => 'bar_total_type',
+        'font_adjust' => 'bar_total_font_adjust',
+        'back_colour' => 'bar_total_back_colour',
+        'angle' => 'bar_total_angle',
+        'round' => 'bar_total_round',
+        'stroke' => 'bar_total_stroke',
+        'stroke_width' => 'bar_total_stroke_width',
+        'fill' => 'bar_total_fill',
+        'tail_width' => 'bar_total_tail_width',
+        'tail_length' => 'bar_total_tail_length',
+        'shadow_opacity' => 'bar_total_shadow_opacity',
+        'pad_x' => 'bar_total_padding_x',
+        'pad_y' => 'bar_total_padding_y',
+      );
 
-    $top = $bar['x'] + $bar['width'] - $this->bar_total_space;
-    $bottom = $bar['x'] + $this->bar_total_space;
-
-    $swap = ($bar['x'] + $bar['width'] <= $this->pad_left + 
-      $this->x_axes[$this->main_x_axis]->Zero());
-    $x = $swap ? $bottom - $this->bar_total_space * 2 :
-      $top + $this->bar_total_space * 2;
-    $anchor = $swap ? 'end' : 'start';
-    $offset = 0;
-
-    // make space for label
-    if($label_above) {
-      $lcontent = $label_above->Data('label');
-      if(is_null($lcontent))
-        $lcontent = $this->units_before_label .
-          Graph::NumString($label_above->value) . $this->units_label;
-      list($text_size) = $this->TextSize($lcontent, $this->bar_label_font_size,
-        $this->bar_label_font_adjust, $this->encoding);
-      $offset = $text_size + $this->bar_label_space;
-      if($swap)
-        $offset = -$offset;
+      // special case
+      $opt = 'bar_total_padding';
+      if(isset($this->settings[$opt]) && !empty($this->settings[$opt])) {
+        $style['pad_x'] = $this->settings[$opt];
+        $style['pad_y'] = $this->settings[$opt];
+      }
+      foreach($opts as $key => $opt) {
+        if(isset($this->settings[$opt]) && !empty($this->settings[$opt]))
+          $style[$key] = $this->settings[$opt];
+      }
     }
-
-    $text = array(
-      'x' => $x + $offset,
-      'y' => $y,
-      'text-anchor' => $anchor,
-      'font-family' => $this->bar_total_font,
-      'font-size' => $font_size,
-      'fill' => $this->bar_total_colour,
-    );
-    if($this->bar_total_font_weight != 'normal')
-      $text['font-weight'] = $this->bar_total_font_weight;
-    return $this->Element('text', $text, NULL, $content);
+    return $style;
   }
-
   /**
    * construct multigraph
    */

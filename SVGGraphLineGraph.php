@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2009-2014 Graham Breach
+ * Copyright (C) 2009-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -33,15 +33,6 @@ class LineGraph extends PointGraph {
   protected function Draw()
   {
     $body = $this->Grid() . $this->Guidelines(SVGG_GUIDELINE_BELOW);
-
-    $attr = array('stroke' => $this->stroke_colour, 'fill' => 'none');
-    $dash = is_array($this->line_dash) ?
-      $this->line_dash[0] : $this->line_dash;
-    $stroke_width = is_array($this->line_stroke_width) ?
-      $this->line_stroke_width[0] : $this->line_stroke_width;
-    if(!empty($dash))
-      $attr['stroke-dasharray'] = $dash;
-    $attr['stroke-width'] = $stroke_width <= 0 ? 1 : $stroke_width;
     $this->ColourSetup($this->values->ItemsCount());
 
     $bnum = 0;
@@ -50,47 +41,24 @@ class LineGraph extends PointGraph {
       $this->y_axes[$this->main_y_axis]->Zero();
     $y_bottom = min($y_axis_pos, $this->height - $this->pad_bottom);
 
-    $path = $fillpath = '';
+    $points = array();
     foreach($this->values[0] as $item) {
       $x = $this->GridPosition($item->key, $bnum);
       if(!is_null($item->value) && !is_null($x)) {
         $y = $this->GridY($item->value);
-        if(!is_null($y)) {
-
-          if(empty($fillpath))
-            $fillpath = "M$x {$y_bottom}L";
-          $path .= "$cmd$x $y ";
-          $fillpath .= "$x $y ";
-
-          // no need to repeat same L command
-          $cmd = $cmd == 'M' ? 'L' : '';
-          $this->AddMarker($x, $y, $item);
-          $last_x = $x;
-        }
+        $points[] = array($x, $y, $item, 0, $bnum);
       }
       ++$bnum;
     }
 
-    $this->line_styles[0] = $attr;
-    $attr['d'] = $path;
-    $graph_line = $this->Element('path', $attr);
-
-    if($this->fill_under) {
-      $attr['fill'] = $this->GetColour(null, 0);
-      if($this->fill_opacity < 1.0)
-        $attr['fill-opacity'] = $this->fill_opacity;
-      $fillpath .= "L{$last_x} {$y_bottom}z";
-      $attr['d'] = $fillpath;
-      $attr['stroke'] = 'none';
-      unset($attr['stroke-dasharray'], $attr['stroke-width']);
-      $this->fill_styles[0] = $attr;
-      $graph_line = $this->Element('path', $attr) . $graph_line;
-    }
+    $graph_line = $this->DrawLine(0, $points, $y_bottom, true); 
 
     $group = array();
     $this->ClipGrid($group);
-    $body .= $this->Element('g', $group, NULL, $graph_line);
 
+    if($this->semantic_classes)
+      $group['class'] = 'series';
+    $body .= $this->Element('g', $group, NULL, $graph_line);
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE);
     $body .= $this->Axes();
     $body .= $this->CrossHairs();
@@ -110,9 +78,68 @@ class LineGraph extends PointGraph {
   }
 
   /**
+   * Returns the SVG fragemnt for a line
+   * $points = array of array($x, $y, $item, $dataset, $index)
+   */
+  public function DrawLine($dataset, $points, $y_bottom, $stroke_colour = false)
+  {
+    $attr = array('fill' => 'none');
+    $fill = $this->ArrayOption($this->fill_under, $dataset);
+    $dash = $this->ArrayOption($this->line_dash, $dataset);
+    $stroke_width = $this->ArrayOption($this->line_stroke_width, $dataset);
+    if(!empty($dash))
+      $attr['stroke-dasharray'] = $dash;
+    $attr['stroke-width'] = $stroke_width <= 0 ? 1 : $stroke_width;
+    $path = $fillpath = '';
+    $cmd = 'M';
+    foreach($points as $point) {
+      list($x, $y, $item, $dataset, $index) = $point;
+
+      if(empty($fillpath))
+        $fillpath = "M$x {$y_bottom}L";
+      $path .= "$cmd$x $y ";
+      $fillpath .= "$x $y ";
+
+      // no need to repeat same L command
+      $cmd = $cmd == 'M' ? 'L' : '';
+      $marker_id = $this->MarkerLabel($dataset, $index, $item, $x, $y);
+      $extra = empty($marker_id) ? NULL : array('id' => $marker_id);
+      $this->AddMarker($x, $y, $item, $extra, $dataset);
+      $last_x = $x;
+    }
+    $attr['stroke'] = $stroke_colour ? $this->stroke_colour :
+      $this->GetColour(null, 0, $dataset, true);
+    $this->line_styles[$dataset] = $attr;
+    $attr['d'] = $path;
+    if($this->semantic_classes)
+      $attr['class'] = "series{$dataset}";
+    $graph_line = $this->Element('path', $attr);
+
+    if($fill) {
+      $opacity = $this->ArrayOption($this->fill_opacity, $dataset);
+      $fillpath .= "L{$last_x} {$y_bottom}z";
+      $fill_style = array(
+        'fill' => $this->GetColour(null, 0, $dataset),
+        'd' => $fillpath,
+        'stroke' => 'none',
+      );
+      if($opacity < 1)
+        $fill_style['opacity'] = $opacity;
+      if($this->semantic_classes)
+        $fill_style['class'] = "series{$dataset}";
+      $graph_line = $this->Element('path', $fill_style) . $graph_line;
+
+      unset($fill_style['d'], $fill_style['class']);
+      $this->fill_styles[$dataset] = $fill_style;
+    }
+
+    return $graph_line;
+  }
+
+  /**
    * Return line and marker for legend
    */
-  protected function DrawLegendEntry($set, $x, $y, $w, $h)
+  public function DrawLegendEntry($set, $x, $y, $w, $h)
   {
     if(!isset($this->line_styles[$set]))
       return '';
@@ -123,7 +150,8 @@ class LineGraph extends PointGraph {
     $line = $this->line_styles[$set];
     $line['d'] = "M$x {$y}l$w 0";
     $graph_line = $this->Element('path', $line);
-    if($this->fill_under) {
+
+    if($this->ArrayOption($this->fill_under,$set)) {
       $fill = $this->fill_styles[$set];
       $fill['d'] = "M$x {$y}l$w 0 0 $h1 -$w 0z";
       $graph_line = $this->Element('path', $fill) . $graph_line;

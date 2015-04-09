@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2011-2014 Graham Breach
+ * Copyright (C) 2011-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -43,7 +43,7 @@ class HorizontalGroupedBarGraph extends HorizontalBarGraph {
 
     $bnum = 0;
     $bars_shown = array_fill(0, $chunk_count, 0);
-
+    $bars = '';
     foreach($this->multi_graph as $itemlist) {
       $k = $itemlist[0]->key;
       $bar_pos = $this->GridPosition($k, $bnum);
@@ -60,13 +60,15 @@ class HorizontalGroupedBarGraph extends HorizontalBarGraph {
           if($bar['width'] > 0) {
             ++$bars_shown[$j];
 
+            $show_label = $this->AddDataLabel($j, $bnum, $bar, $item,
+              $bar['x'], $bar['y'], $bar['width'], $bar['height']);
             if($this->show_tooltips)
               $this->SetTooltip($bar, $item, $item->value, null,
-                !$this->compat_events && $this->show_bar_labels);
+                !$this->compat_events && $show_label);
+            if($this->semantic_classes)
+              $bar['class'] = "series{$j}";
             $rect = $this->Element('rect', $bar, $bar_style);
-            if($this->show_bar_labels)
-              $rect .= $this->BarLabel($item, $bar);
-            $body .= $this->GetLink($item, $k, $rect);
+            $bars .= $this->GetLink($item, $k, $rect);
             unset($bar['id']); // clear ID for next generated value
           }
           $this->bar_styles[$j] = $bar_style;
@@ -81,6 +83,9 @@ class HorizontalGroupedBarGraph extends HorizontalBarGraph {
       }
     }
 
+    if($this->semantic_classes)
+      $bars = $this->Element('g', array('class' => 'series'), NULL, $bars);
+    $body .= $bars;
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     return $body;
   }

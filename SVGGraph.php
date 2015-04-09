@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2009-2014 Graham Breach
+ * Copyright (C) 2009-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -19,7 +19,7 @@
  * For more information, please contact <graham@goat1000.com>
  */
 
-define('SVGGRAPH_VERSION', 'SVGGraph 2.17');
+define('SVGGRAPH_VERSION', 'SVGGraph 2.18');
 
 require_once 'SVGGraphColours.php';
 
@@ -39,6 +39,25 @@ class SVGGraph {
     $this->height = $h;
     if(is_array($settings))
       $this->settings = $settings;
+
+    // use mbstring if available, or fall back to 1-byte char strings
+    if(!function_exists('SVGGraphStrlen')) {
+      if(extension_loaded('mbstring')) {
+        function SVGGraphStrlen($s, $e) {
+          return mb_strlen($s, $e);
+        }
+        function SVGGraphSubstr($s, $b, $l, $e) {
+          return mb_substr($s, $b, $l, $e);
+        }
+      } else {
+        function SVGGraphStrlen($s, $e) {
+          return strlen($s);
+        }
+        function SVGGraphSubstr($s, $b, $l, $e) {
+          return is_null($l) ? substr($s, $b) : substr($s, $b, $l);
+        }
+      }
+    }
   }
 
   public function Values($values)
@@ -360,6 +379,7 @@ abstract class Graph {
     $contents = $this->Canvas($canvas_id);
     $contents .= $this->DrawTitle();
     $contents .= $this->Draw();
+    $contents .= $this->DrawDataLabels();
     $contents .= $this->DrawBackMatter();
     $contents .= $this->DrawLegend();
 
@@ -395,8 +415,8 @@ abstract class Graph {
       $entry = $this->DrawLegendEntry($key, 0, 0, 20, 20);
       if($entry != '') {
         ++$entry_count;
-        if(mb_strlen($value, $this->encoding) > $longest)
-          $longest = mb_strlen($value, $this->encoding);
+        if(SVGGraphStrlen($value, $this->encoding) > $longest)
+          $longest = SVGGraphStrlen($value, $this->encoding);
       }
     }
     if(!$entry_count)
@@ -426,7 +446,7 @@ abstract class Graph {
       $start_y += $title_font_size + $this->legend_padding;
       $title_width = $this->legend_padding * 2 +
         $title_font_size * $title_font_adjust * 
-        mb_strlen($this->legend_title, $this->encoding);
+        SVGGraphStrlen($this->legend_title, $this->encoding);
     }
 
     $columns = max(1, min(ceil($this->legend_columns), $entry_count));
@@ -538,6 +558,7 @@ abstract class Graph {
     // create group to contain whole legend
     list($left, $top) = $this->ParsePosition($this->legend_position,
       $width, $height);
+
     $group = array(
       'font-family' => $this->legend_font,
       'font-size' => $this->legend_font_size,
@@ -594,36 +615,46 @@ abstract class Graph {
       $r = $this->width;
     }
 
-    // ParsePosition is always inside canvas or graph
-    $pos .= ' inside';
+    // ParsePosition is always inside canvas or graph, defaulted to top left
+    $pos = "top left " . str_replace('outer', 'inner', $pos);
     return Graph::RelativePosition($pos, $t, $l, $b, $r, $w, $h, $pad);
   }
 
   /**
-   * Returns the [x,y] position that is $pos relative to the
-   * top, left, bottom and right. When $text is true, returns
-   * [x,y,align right]
+   * Returns [hpos,vpos,offset_x,offset_y] positions derived from full
+   * position string
    */
-  public static function RelativePosition($pos, $top, $left,
-    $bottom, $right, $width, $height, $pad, $text = false)
+  public static function TranslatePosition($pos)
   {
+    $parts = preg_split('/\s+/', strtolower($pos));
     $offset_x = $offset_y = 0;
-    $inside = $atop = $aleft = true;
-    $parts = preg_split('/\s+/', $pos);
+    $inside = true;
+    $vpos = 'm';
+    $hpos = 'c';
+
+    // translated positions:
+    // ot, t, m, b, ob = outside top, top, middle, bottom, outside bottom
+    // ol, l, c, r, or = outside left, left, centre, right, outside right
     while(count($parts)) {
       $part = array_shift($parts);
       switch($part) {
+      case 'outer' :
       case 'outside' : $inside = false;
         break;
+      case 'inner' :
       case 'inside' : $inside = true;
         break;
-      case 'top' : $atop = true;
+      case 'top' : $vpos = $inside ? 't' : 'ot';
         break;
-      case 'bottom' : $atop = false;
+      case 'bottom' : $vpos = $inside ? 'b' : 'ob';
         break;
-      case 'left' : $aleft = true;
+      case 'left' : $hpos = $inside ? 'l' : 'ol';
         break;
-      case 'right' : $aleft = false;
+      case 'right' : $hpos = $inside ? 'r' : 'or';
+        break;
+      case 'above' : $inside = false; $vpos = 'ot';
+        break;
+      case 'below' : $inside = false; $vpos = 'ob';
         break;
       default:
         if(is_numeric($part)) {
@@ -633,25 +664,66 @@ abstract class Graph {
         }
       }
     }
-    $edge = $atop ? $top : $bottom;
-    $fit = $inside && $bottom - $top >= $pad + $height;
+    return array($hpos, $vpos, $offset_x, $offset_y);
+  }
 
-    // padding +ve if both fitting in at top, or outside at bottom
-    $distance = ($atop == $fit) ? $pad : -($pad + $height);
-    $y = $edge + $distance;
+  /**
+   * Returns [x,y,text-anchor,hpos,vpos] position that is $pos relative to the
+   * top, left, bottom and right.
+   * When $text is true, x and y are adjusted for text-anchor position
+   */
+  public static function RelativePosition($pos, $top, $left,
+    $bottom, $right, $width, $height, $pad, $text = false)
+  {
+    list($hpos, $vpos, $offset_x, $offset_y) = Graph::TranslatePosition($pos);
 
-    $edge = $aleft ? $left : $right;
-    $fit = $inside && $right - $left >= $pad + $width;
-    $distance = ($aleft == $fit) ? $pad :
-      ($text ? -$pad : -($pad + $width));
-    $x = $edge + $distance;
+    // if the containers have no thickness, position outside
+    $translate = array('l' => 'ol', 'r' => 'or', 't' => 'ot', 'b' => 'ob');
+    if($top == $bottom && isset($translate[$vpos]))
+      $vpos = $translate[$vpos];
+    if($left == $right && isset($translate[$hpos]))
+      $hpos = $translate[$hpos];
+
+    switch($vpos) {
+    case 'ot' : $y = $top - $height - $pad; break;
+    case 't' : $y = $top + $pad; break;
+    case 'b' : $y = $bottom - $height - $pad; break;
+    case 'ob' : $y = $bottom + $pad; break;
+    case 'm' :
+    default :
+      $y = $top + ($bottom - $top - $height) / 2; break;
+    }
+
+    if(($hpos == 'r' || $hpos == 'l') && $right - $left - $pad - $width < 0)
+      $hpos = 'c';
+    switch($hpos) {
+    case 'ol' : $x = $left - $width - $pad; break;
+    case 'l' : $x = $left + $pad; break;
+    case 'r' : $x = $right - $width - $pad; break;
+    case 'or' : $x = $right + $pad; break;
+    case 'c' :
+    default :
+      $x = $left + ($right - $left - $width) / 2; break;
+    }
 
     $y += $offset_y;
     $x += $offset_x;
   
-    // third return value is whether text should be right-aligned
-    $text_right = $text && ($aleft != $fit);
-    return array($x, $y, $text_right);
+    // third return value is text alignment
+    $align_map = array(
+      'ol' => 'end', 'l' => 'start', 'c' => 'middle',
+      'r' => 'end', 'or' => 'start'
+    );
+    $text_align = $align_map[$hpos];
+
+    // in text mode, adjust X for text alignment
+    if($text && $hpos != 'l' && $hpos != 'or') {
+      if($hpos == 'c')
+        $x += $width / 2;
+      else
+        $x += $width;
+    }
+    return array($x, $y, $text_align, $hpos, $vpos);
   }
 
 
@@ -669,7 +741,7 @@ abstract class Graph {
   protected function DrawTitle()
   {
     // graph_title is available for all graph types
-    if(mb_strlen($this->graph_title, $this->encoding) <= 0)
+    if(SVGGraphStrlen($this->graph_title, $this->encoding) <= 0)
       return '';
 
     $pos = $this->graph_title_position;
@@ -835,7 +907,7 @@ abstract class Graph {
   /**
    * Returns a text element, with tspans for subsequent lines
    */
-  protected function Text($text, $line_spacing, $attribs, $styles = NULL)
+  public function Text($text, $line_spacing, $attribs, $styles = NULL)
   {
     $lines = explode("\n", $text);
     $content = array_shift($lines);
@@ -857,7 +929,7 @@ abstract class Graph {
    * Returns [width,height] of text 
    * $text = string OR text length
    */
-  protected static function TextSize($text, $font_size, $font_adjust, $encoding,
+  public static function TextSize($text, $font_size, $font_adjust, $encoding,
     $angle = 0, $line_spacing = 0)
   {
     $height = $font_size;
@@ -870,11 +942,11 @@ abstract class Graph {
         $len = 0;
         $lines = explode("\n", $text);
         foreach($lines as $l)
-          if(mb_strlen($l, $encoding) > $len)
-            $len = mb_strlen($l, $encoding);
+          if(SVGGraphStrlen($l, $encoding) > $len)
+            $len = SVGGraphStrlen($l, $encoding);
         $height += $line_spacing * (count($lines) - 1);
       } else {
-        $len = mb_strlen($text, $encoding);
+        $len = SVGGraphStrlen($text, $encoding);
       }
     }
     $width = $len * $font_size * $font_adjust;
@@ -899,7 +971,7 @@ abstract class Graph {
   /**
    * Returns the number of lines in a string
    */
-  protected static function CountLines($text)
+  public static function CountLines($text)
   {
     $c = 1;
     $pos = 0;
@@ -1334,12 +1406,33 @@ abstract class Graph {
 
   /**
    * Sets the fader for an element
+   * @param array &$element Element that should cause fading
+   * @param number $in Fade in speed
+   * @param number $out Fade out speed
+   * @param string $id ID of element to be faded
+   * @param bool $duplicate TRUE to create transparent overlay
    */
   protected function SetFader(&$element, $in, $out, $target = NULL,
     $duplicate = FALSE)
   {
     $this->LoadJavascript();
     Graph::$javascript->SetFader($element, $in, $out, $target, $duplicate);
+  }
+
+  /**
+   * Sets click visibility for $target when $element is clicked
+   */
+  protected function SetClickShow(&$element, $target, $hidden,
+    $duplicate = FALSE)
+  {
+    $this->LoadJavascript();
+    Graph::$javascript->SetClickShow($element, $target, $hidden, $duplicate);
+  }
+
+  public function SetPopFront(&$element, $target, $duplicate = FALSE)
+  {
+    $this->LoadJavascript();
+    Graph::$javascript->SetPopFront($element, $target, $duplicate);
   }
 
   /**
@@ -1350,6 +1443,151 @@ abstract class Graph {
   {
     $this->LoadJavascript();
     Graph::$javascript->AddOverlay($from, $to);
+  }
+
+  /**
+   * Adds a data label to the list
+   */
+  protected function AddDataLabel($dataset, $index, &$element, &$item,
+    $x, $y, $w, $h, $content = NULL, $duplicate = TRUE)
+  {
+    if(!$this->ArrayOption($this->show_data_labels, $dataset))
+      return false;
+    if(!isset($this->data_labels)) {
+      include_once 'SVGGraphDataLabels.php';
+      $this->data_labels = new DataLabels($this);
+    }
+
+    // set up fading for this label?
+    $id = NULL;
+    $fade_in = $this->ArrayOption($this->data_label_fade_in_speed, $dataset);
+    $fade_out = $this->ArrayOption($this->data_label_fade_out_speed, $dataset);
+    $click = $this->ArrayOption($this->data_label_click, $dataset);
+    $popup = $this->ArrayOption($this->data_label_popfront, $dataset);
+    if($click == 'hide' || $click == 'show') {
+      $id = $this->NewID();
+      $this->SetClickShow($element, $id, $click == 'hide',
+        $duplicate && !$this->compat_events);
+    }
+    if($popup) {
+      if(!$id)
+        $id = $this->NewID();
+      $this->SetPopFront($element, $id, $duplicate && !$this->compat_events);
+    }
+    if($fade_in || $fade_out) {
+      $speed_in = $fade_in ? $fade_in / 100 : 0;
+      $speed_out = $fade_out ? $fade_out / 100 : 0;
+      if(!$id)
+        $id = $this->NewID();
+      $this->SetFader($element, $speed_in, $speed_out, $id,
+        $duplicate && !$this->compat_events);
+    }
+    $this->data_labels->AddLabel($dataset, $index, $item, $x, $y, $w, $h, $id,
+      $content, $fade_in, $click);
+    return true;
+  }
+
+  /**
+   * Adds a label for non-data text
+   */
+  protected function AddContentLabel($dataset, $index, $x, $y, $w, $h, $content)
+  {
+    if(!isset($this->data_labels)) {
+      include_once 'SVGGraphDataLabels.php';
+      $this->data_labels = new DataLabels($this);
+    }
+
+    $this->data_labels->AddContentLabel($dataset, $index, $x, $y, $w, $h,
+      $content);
+    return true;
+  }
+
+  /**
+   * Draws the data labels
+   */
+  protected function DrawDataLabels()
+  {
+    if(isset($this->data_labels))
+      return $this->data_labels->GetLabels();
+    return '';
+  }
+
+  /**
+   * Returns the position for a data label
+   */
+  public function DataLabelPosition($dataset, $index, &$item, $x, $y, $w, $h,
+    $label_w, $label_h)
+  {
+    $pos = $this->ArrayOption($this->data_label_position, $dataset);
+    if(empty($pos))
+      $pos = 'above';
+    return $pos;
+  }
+
+
+  /**
+   * Returns TRUE if the position is inside the item
+   */
+  public static function IsPositionInside($pos)
+  {
+    list($hpos, $vpos) = Graph::TranslatePosition($pos);
+    return strpos($hpos . $vpos, 'o') === FALSE;
+  }
+
+  /**
+   * Sets the styles for data labels
+   */
+  public function DataLabelStyle($dataset, $index, &$item)
+  {
+    $style = array(
+      'type' => $this->ArrayOption($this->data_label_type, $dataset),
+      'font' => $this->ArrayOption($this->data_label_font, $dataset),
+      'font_size' => $this->ArrayOption($this->data_label_font_size, $dataset),
+      'font_adjust' => $this->ArrayOption($this->data_label_font_adjust, $dataset),
+      'font_weight' => $this->ArrayOption($this->data_label_font_weight, $dataset),
+      'colour' => $this->ArrayOption($this->data_label_colour, $dataset),
+      'altcolour' => $this->ArrayOption($this->data_label_colour_outside, $dataset),
+      'back_colour' => $this->ArrayOption($this->data_label_back_colour, $dataset),
+      'back_altcolour' => $this->ArrayOption($this->data_label_back_colour_outside, $dataset),
+      'space' => $this->ArrayOption($this->data_label_space, $dataset),
+      'angle' => $this->ArrayOption($this->data_label_angle, $dataset),
+      'pad_x' => $this->GetFirst(
+        $this->ArrayOption($this->data_label_padding_x, $dataset),
+        $this->ArrayOption($this->data_label_padding, $dataset)),
+      'pad_y' => $this->GetFirst(
+        $this->ArrayOption($this->data_label_padding_y, $dataset),
+        $this->ArrayOption($this->data_label_padding, $dataset)),
+      'round' => $this->ArrayOption($this->data_label_round, $dataset),
+      'stroke' => $this->ArrayOption($this->data_label_outline_colour, $dataset),
+      'stroke_width' => $this->ArrayOption($this->data_label_outline_thickness, $dataset),
+      'fill' => $this->ArrayOption($this->data_label_fill, $dataset),
+      'tail_width' => $this->ArrayOption($this->data_label_tail_width, $dataset),
+      'tail_length' => $this->ArrayOption($this->data_label_tail_length, $dataset),
+      'shadow_opacity' => $this->ArrayOption($this->data_label_shadow_opacity, $dataset),
+    );
+    return $style;
+  }
+
+  /**
+   * Tail direction is required for some types of label
+   */
+  public function DataLabelTailDirection($dataset, $index, $hpos, $vpos)
+  {
+    // angle starts at right, goes clockwise
+    $angle = 90;
+    $pos = str_replace(array('i','o','m'), '', $vpos) .
+      str_replace(array('i','o','c'), '', $hpos);
+    switch($pos) {
+      case 'l' : $angle = 0; break;
+      case 'tl' : $angle = 45; break;
+      case 't' : $angle = 90; break;
+      case 'tr' : $angle = 135; break;
+      case 'r' : $angle = 180; break;
+      case 'br' : $angle = 225; break; 
+      case 'b' : $angle = 270; break;
+      case 'bl' : $angle = 315; break;
+    }
+    return $angle; 
   }
 
   /**

@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2013-2014 Graham Breach
+ * Copyright (C) 2013-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -38,6 +38,7 @@ class BubbleGraph extends PointGraph {
 
     $bnum = 0;
     $y_axis = $this->y_axes[$this->main_y_axis];
+    $series = '';
     foreach($this->values[0] as $item) {
       $area = $item->Data('area');
       $point_pos = $this->GridPosition($item->key, $bnum);
@@ -59,12 +60,16 @@ class BubbleGraph extends PointGraph {
             $circle_style = array('fill' => $this->GetColour($item, $bnum));
           }
           $this->SetStroke($circle_style, $item);
+          $show_label = $this->AddDataLabel(0, $bnum, $circle, $item,
+            $x - $r, $y - $r, $r * 2, $r * 2);
 
           if($this->show_tooltips)
             $this->SetTooltip($circle, $item, $area, null,
               !$this->compat_events);
+          if($this->semantic_classes)
+            $circle['class'] = "series0";
           $bubble = $this->Element('circle', array_merge($circle, $circle_style));
-          $body .= $this->GetLink($item, $item->key, $bubble);
+          $series .= $this->GetLink($item, $item->key, $bubble);
 
           $this->bubble_styles[] = $circle_style;
         }
@@ -72,7 +77,9 @@ class BubbleGraph extends PointGraph {
       ++$bnum;
     }
 
-    $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE);
+    if($this->semantic_classes)
+      $series = $this->Element('g', array('class' => 'series'), NULL, $series);
+    $body .= $series . $this->Guidelines(SVGG_GUIDELINE_ABOVE);
     $body .= $this->Axes();
     $body .= $this->DrawMarkers();
     return $body;
@@ -93,7 +100,7 @@ class BubbleGraph extends PointGraph {
   /**
    * Return bubble for legend
    */
-  protected function DrawLegendEntry($set, $x, $y, $w, $h)
+  public function DrawLegendEntry($set, $x, $y, $w, $h)
   {
     if(!array_key_exists($set, $this->bubble_styles))
       return '';

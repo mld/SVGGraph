@@ -1,6 +1,6 @@
 <?php
 /**
- * Copyright (C) 2012-2014 Graham Breach
+ * Copyright (C) 2012-2015 Graham Breach
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -39,20 +39,24 @@ class GroupedBar3DGraph extends Bar3DGraph {
     $this->ColourSetup($this->multi_graph->ItemsCount(-1), $chunk_count);
 
     $this->block_width = $chunk_width;
+    list($this->bx, $this->by) = $this->Project(-1, 0, $chunk_width);
 
     // make the top parallelogram, set it as a symbol for re-use
-    list($this->bx, $this->by) = $this->Project(0, 0, $chunk_width);
     $top = $this->BarTop();
 
     $bnum = 0;
-    $groups = array_fill(0, $chunk_count, '');
 
     // get the translation for the whole bar 
     // unit space is 1 deep * $chunk_count wide
-    list($tx, $ty) = $this->Project(0, 0, $bspace / $chunk_count);
-    $group = array('transform' => "translate($tx,$ty)");
+    list($tx, $ty) = $this->Project(0, 0, $bspace);
+    $all_group = array();
+    if($tx || $ty)
+      $all_group['transform'] = "translate($tx,$ty)";
+    if($this->semantic_classes)
+      $all_group['class'] = 'series';
 
     $bars = '';
+    $group = array();
     foreach($this->multi_graph as $itemlist) {
       $k = $itemlist[0]->key;
       $bar_pos = $this->GridPosition($k, $bnum);
@@ -65,13 +69,17 @@ class GroupedBar3DGraph extends Bar3DGraph {
             $bar_sections = $this->Bar3D($item, $bar, $top, $bnum, $j, NULL,
               $this->DatasetYAxis($j));
             $group['fill'] = $this->GetColour($item, $bnum, $j);
+            $show_label = $this->AddDataLabel($j, $bnum, $group, $item,
+              $bar['x'] + $tx, $bar['y'] + $ty, $bar['width'], $bar['height']);
 
             if($this->show_tooltips)
               $this->SetTooltip($group, $item, $item->value);
             $link = $this->GetLink($item, $k, $bar_sections);
             $this->SetStroke($group, $item, $j, 'round');
+            if($this->semantic_classes)
+              $group['class'] = "series{$j}";
             $bars .= $this->Element('g', $group, NULL, $link);
-            unset($group['id']); // make sure a new one is generated
+            unset($group['id'], $group['class']);
             if(!array_key_exists($j, $this->bar_styles))
               $this->bar_styles[$j] = $group;
           }
@@ -80,6 +88,8 @@ class GroupedBar3DGraph extends Bar3DGraph {
       ++$bnum;
     }
 
+    if(count($all_group))
+      $bars = $this->Element('g', $all_group, NULL, $bars);
     $body .= $bars;
     $body .= $this->Guidelines(SVGG_GUIDELINE_ABOVE) . $this->Axes();
     return $body;
